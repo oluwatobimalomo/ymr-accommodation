@@ -66,8 +66,27 @@ export async function confirmPaymentFromVerifiedResult(verified: VerifyTransacti
 
   const db = getDb();
   return db.transaction(async (tx) => {
-    const [booking] = await tx.select().from(bookings).where(eq(bookings.reference, verified.reference)).limit(1);
+    // Callback and webhook confirmation serialize on this one booking row.
+    // The second process sees the committed state after it obtains the lock.
+    const [booking] = await tx
+      .select()
+      .from(bookings)
+      .where(eq(bookings.reference, verified.reference))
+      .for("update")
+      .limit(1);
     if (!booking) return { status: "booking_not_found" };
+
+    const [existingTransaction] = await tx
+      .select()
+      .from(paymentTransactions)
+      .where(eq(paymentTransactions.paystackTransactionId, verified.paystackTransactionId))
+      .limit(1);
+    if (existingTransaction) {
+      if (existingTransaction.bookingId !== booking.id) {
+        throw new Error("Paystack transaction is already associated with a different booking.");
+      }
+      return { status: existingTransaction.status === "AMOUNT_MISMATCH" ? "amount_mismatch" : "already_confirmed" };
+    }
 
     // Idempotent: a second webhook delivery, or the callback firing after
     // the webhook already landed, must be a safe no-op, not a re-charge.
@@ -104,7 +123,8 @@ export async function confirmPaymentFromVerifiedResult(verified: VerifyTransacti
         action: "payment.amount_mismatch",
         entityType: "booking",
         entityId: booking.id,
-        after: { expected: booking.amountMinor, received: verified.amountMinor },
+        before: { paymentStatus: booking.paymentStatus },
+        after: { outcome: "amount_mismatch", expected: booking.amountMinor, requested: verified.requestedAmountMinor, received: verified.amountMinor, currency: verified.currency },
       });
       return { status: "amount_mismatch" };
     }
@@ -125,7 +145,7 @@ export async function confirmPaymentFromVerifiedResult(verified: VerifyTransacti
         paidAt: verified.paidAt ? new Date(verified.paidAt) : new Date(),
         rawPayload: verified.raw,
       });
-      await tx.update(bookings).set({ paymentStatus: "PAID", updatedAt: new Date() }).where(eq(bookings.id, booking.id));
+      await tx.update(bookings).set({ paymentStatus: "PAID", allocationStatus: "NOT_ALLOCATED", updatedAt: new Date() }).where(eq(bookings.id, booking.id));
       await createTicketInTx(tx, {
         bookingId: booking.id,
         customerName: booking.bookerName,
@@ -140,6 +160,8 @@ export async function confirmPaymentFromVerifiedResult(verified: VerifyTransacti
         action: "payment.confirmed_needs_reallocation",
         entityType: "booking",
         entityId: booking.id,
+        before: { paymentStatus: booking.paymentStatus, accommodationStatus: booking.accommodationStatus },
+        after: { paymentStatus: "PAID", accommodationStatus: booking.accommodationStatus, allocationStatus: "NOT_ALLOCATED", outcome: "needs_manual_review" },
       });
       return { status: "needs_manual_review" };
     }
@@ -157,7 +179,7 @@ export async function confirmPaymentFromVerifiedResult(verified: VerifyTransacti
     });
     await tx
       .update(bookings)
-      .set({ paymentStatus: "PAID", accommodationStatus: "ALLOCATED", updatedAt: new Date() })
+      .set({ paymentStatus: "PAID", accommodationStatus: "ALLOCATED", allocationStatus: "FULLY_ALLOCATED", updatedAt: new Date() })
       .where(eq(bookings.id, booking.id));
     // The hold's job (protecting the bedspace until payment) is done; the
     // permanent record is booking_occupants, so the hold row is no longer needed.
@@ -168,7 +190,8 @@ export async function confirmPaymentFromVerifiedResult(verified: VerifyTransacti
       action: "payment.confirmed",
       entityType: "booking",
       entityId: booking.id,
-      after: { paymentStatus: "PAID", reference: verified.reference },
+      before: { paymentStatus: booking.paymentStatus, accommodationStatus: booking.accommodationStatus },
+      after: { paymentStatus: "PAID", accommodationStatus: "ALLOCATED", allocationStatus: "FULLY_ALLOCATED", reference: verified.reference },
     });
     return { status: "confirmed" };
   });

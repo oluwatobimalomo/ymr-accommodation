@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { paymentEvents } from "@/db/schema";
 import { confirmPaymentFromVerifiedResult } from "@/lib/payments/confirm-payment";
@@ -30,26 +31,42 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true }); // acknowledge, nothing to do
   }
 
-  // Idempotency: record this exact event id first. A duplicate delivery
-  // hits the unique constraint on event_key and is safely ignored.
   const eventKey = `paystack:${event.data.id ?? event.data.reference}`;
-  try {
-    await getDb().insert(paymentEvents).values({ provider: "paystack", eventKey, payload: event });
-  } catch {
-    return NextResponse.json({ received: true, duplicate: true });
-  }
+  const db = getDb();
+  const [previouslyProcessed] = await db
+    .select({ id: paymentEvents.id })
+    .from(paymentEvents)
+    .where(eq(paymentEvents.eventKey, eventKey))
+    .limit(1);
+  if (previouslyProcessed) return NextResponse.json({ received: true, duplicate: true });
 
-  // The webhook payload itself is never trusted for the actual amount/status
-  // — always re-verify directly against Paystack's API before fulfilling.
+  // Do not persist a processed-event marker until verification and business
+  // handling complete. Non-2xx makes Paystack retry transient failures.
   try {
     const verified = await verifyTransaction(event.data.reference);
-    await confirmPaymentFromVerifiedResult(verified);
+    const outcome = await confirmPaymentFromVerifiedResult(verified);
+    if (outcome.status === "not_successful" || outcome.status === "booking_not_found") {
+      console.error(`Paystack webhook ${eventKey} not completed: ${outcome.status}`);
+      return NextResponse.json({ error: "Payment confirmation is not complete" }, { status: 503 });
+    }
+
+    try {
+      await db.insert(paymentEvents).values({
+        provider: "paystack",
+        eventKey,
+        payload: { event: event.event, transactionId: event.data.id ?? null, reference: event.data.reference },
+      });
+    } catch (e) {
+      if (isUniqueViolation(e)) return NextResponse.json({ received: true, duplicate: true });
+      throw e;
+    }
+    return NextResponse.json({ received: true, outcome: outcome.status });
   } catch (e) {
     console.error("Paystack webhook processing failed:", e);
-    // Still 200 the webhook itself (we recorded it); Paystack retries on
-    // non-2xx, and our own confirmation logic is what actually needs to
-    // succeed, which can be investigated/retried independently.
+    return NextResponse.json({ error: "Webhook processing failed; retry is safe" }, { status: 503 });
   }
+}
 
-  return NextResponse.json({ received: true });
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "23505";
 }

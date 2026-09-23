@@ -1,4 +1,5 @@
-import { char, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { char, integer, pgTable, text, timestamp, uniqueIndex, uuid, index } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { accommodationCategories, accommodationUnits, bedspaces, rooms } from "./inventory";
 import { events } from "./events";
 import { accommodationStatus, allocationStatus, occupantGender, paymentStatus } from "./enums";
@@ -69,3 +70,25 @@ export const bookingOccupants = pgTable("booking_occupants", {
   unitId: uuid("unit_id").references(() => accommodationUnits.id, { onDelete: "restrict" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Durable claim for private whole-unit inventory. Multiple occupants from a
+ * single booking may share the unit, but only one unreleased booking may own
+ * the unit at a time. Temporary inventory_holds still govern checkout expiry.
+ */
+export const privateUnitAllocations = pgTable(
+  "private_unit_allocations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    unitId: uuid("unit_id").notNull().references(() => accommodationUnits.id, { onDelete: "restrict" }),
+    bookingId: uuid("booking_id").notNull().references(() => bookings.id, { onDelete: "restrict" }),
+    allocatedAt: timestamp("allocated_at", { withTimezone: true }).notNull().defaultNow(),
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+    releaseReason: text("release_reason"),
+  },
+  (t) => [
+    uniqueIndex("private_unit_allocations_active_unit_uq").on(t.unitId).where(sql`${t.releasedAt} is null`),
+    uniqueIndex("private_unit_allocations_booking_unit_uq").on(t.bookingId, t.unitId),
+    index("private_unit_allocations_booking_idx").on(t.bookingId),
+  ],
+);

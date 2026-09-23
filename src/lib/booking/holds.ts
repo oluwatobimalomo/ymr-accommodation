@@ -1,7 +1,8 @@
 import { and, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import type { DbOrTx } from "@/db/client";
 import { getDb } from "@/db/client";
-import { accommodationUnits, bedspaces, bookingOccupants, bookings, inventoryHolds, rooms } from "@/db/schema";
+import { accommodationUnits, bedspaces, bookingOccupants, bookings, inventoryHolds, privateUnitAllocations, rooms } from "@/db/schema";
+import { recordAudit } from "@/lib/audit";
 
 export class InventoryUnavailableError extends Error {
   constructor(message = "This bedspace was just booked by another participant. Please choose another available space.") {
@@ -34,16 +35,43 @@ export async function sweepExpiredHolds(tx: DbOrTx): Promise<void> {
     const pending = await tx
       .select()
       .from(bookings)
-      .where(and(inArray(bookings.id, bookingIds), eq(bookings.paymentStatus, "PENDING")));
+      .where(and(inArray(bookings.id, bookingIds), eq(bookings.paymentStatus, "PENDING")))
+      .for("update");
     for (const booking of pending) {
-      await tx
+      const [cancelled] = await tx
         .update(bookings)
-        .set({ paymentStatus: "CANCELLED", accommodationStatus: "CANCELLED", updatedAt: new Date() })
-        .where(eq(bookings.id, booking.id));
+        .set({ paymentStatus: "CANCELLED", accommodationStatus: "CANCELLED", allocationStatus: "NOT_ALLOCATED", updatedAt: new Date() })
+        .where(and(eq(bookings.id, booking.id), eq(bookings.paymentStatus, "PENDING")))
+        .returning();
+      if (!cancelled) continue;
+      const released = await tx
+        .update(privateUnitAllocations)
+        .set({ releasedAt: new Date(), releaseReason: "temporary hold expired" })
+        .where(and(eq(privateUnitAllocations.bookingId, booking.id), isNull(privateUnitAllocations.releasedAt)))
+        .returning({ unitId: privateUnitAllocations.unitId });
+      if (released.length) {
+        await recordAudit(tx, {
+          actor: null,
+          action: "inventory.private_unit_released",
+          entityType: "booking",
+          entityId: booking.id,
+          before: { unitIds: released.map((row) => row.unitId) },
+          after: { released: true },
+          reason: "temporary hold expired",
+        });
+      }
       await tx
         .update(bookingOccupants)
         .set({ bedspaceId: null, roomId: null, unitId: null })
         .where(eq(bookingOccupants.bookingId, booking.id));
+      await recordAudit(tx, {
+        actor: null,
+        action: "booking.hold_expired",
+        entityType: "booking",
+        entityId: booking.id,
+        before: { paymentStatus: booking.paymentStatus, accommodationStatus: booking.accommodationStatus },
+        after: { paymentStatus: "CANCELLED", accommodationStatus: "CANCELLED" },
+      });
     }
   }
 
@@ -165,6 +193,12 @@ export async function holdUnit(tx: DbOrTx, unitId: string, holdMinutes: number):
   if (locked.status !== "ACTIVE") throw new InventoryUnavailableError("This unit is not currently available.");
 
   await sweepExpiredHolds(tx);
+  const [allocation] = await tx
+    .select({ id: privateUnitAllocations.id })
+    .from(privateUnitAllocations)
+    .where(and(eq(privateUnitAllocations.unitId, unitId), isNull(privateUnitAllocations.releasedAt)))
+    .limit(1);
+  if (allocation) throw new InventoryUnavailableError("This unit is already allocated to another booking.");
   const [existingHold] = await tx.select().from(inventoryHolds).where(eq(inventoryHolds.unitId, unitId));
   if (existingHold) throw new InventoryUnavailableError();
 
@@ -189,6 +223,13 @@ export async function autoHoldUnit(tx: DbOrTx, unitIds: string[], holdMinutes: n
       .map((r) => r.id)
       .filter((id): id is string => id !== null),
   );
+  const allocatedUnitIds = new Set(
+    (await tx
+      .select({ id: privateUnitAllocations.unitId })
+      .from(privateUnitAllocations)
+      .where(isNull(privateUnitAllocations.releasedAt)))
+      .map((row) => row.id),
+  );
 
   const candidates = await tx
     .select()
@@ -197,7 +238,7 @@ export async function autoHoldUnit(tx: DbOrTx, unitIds: string[], holdMinutes: n
     .orderBy(accommodationUnits.name)
     .for("update", { skipLocked: true });
 
-  const free = candidates.find((u) => !heldUnitIds.has(u.id));
+  const free = candidates.find((u) => !heldUnitIds.has(u.id) && !allocatedUnitIds.has(u.id));
   if (!free) throw new InventoryUnavailableError("No units are currently available in this category.");
 
   const holdId = await holdUnit(tx, free.id, holdMinutes);

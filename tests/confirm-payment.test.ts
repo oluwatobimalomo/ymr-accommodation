@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { bookingOccupants, bookings, events, inventoryHolds, paymentTransactions, supportTickets } from "@/db/schema";
+import { auditLogs, bookingOccupants, bookings, events, inventoryHolds, paymentTransactions, supportTickets } from "@/db/schema";
 import type { VerifyTransactionResult } from "@/lib/payments/paystack";
 
 let client: PGlite;
@@ -21,6 +21,7 @@ const { computeGrants } = await import("@/lib/authz/authorize");
 const { ROLE_DEFINITIONS } = await import("@/lib/authz/roles");
 
 let eventId: string;
+let transactionId = 12000;
 const admin = (() => {
   const def = ROLE_DEFINITIONS.find((r) => r.key === "accommodation_admin")!;
   return {
@@ -76,7 +77,7 @@ function verified(overrides: Partial<VerifyTransactionResult>): VerifyTransactio
     currency: "NGN",
     gatewayResponse: "Successful",
     paidAt: new Date().toISOString(),
-    paystackTransactionId: 12345,
+    paystackTransactionId: transactionId++,
     raw: {},
     ...overrides,
   };
@@ -91,10 +92,15 @@ describe("confirmPaymentFromVerifiedResult", () => {
     const [row] = await testDb.select().from(bookings).where(eq(bookings.id, booking.bookingId));
     expect(row!.paymentStatus).toBe("PAID");
     expect(row!.accommodationStatus).toBe("ALLOCATED");
+    expect(row!.allocationStatus).toBe("FULLY_ALLOCATED");
 
     const txns = await testDb.select().from(paymentTransactions).where(eq(paymentTransactions.bookingId, booking.bookingId));
     expect(txns).toHaveLength(1);
     expect(txns[0]!.status).toBe("SUCCESS");
+
+    const logs = await testDb.select().from(auditLogs).where(eq(auditLogs.entityId, booking.bookingId));
+    expect(logs.some((entry) => entry.action === "payment.confirmed")).toBe(true);
+    expect(JSON.stringify(logs)).not.toContain("rawPayload");
 
     const holds = await testDb.select().from(inventoryHolds).where(eq(inventoryHolds.bookingId, booking.bookingId));
     expect(holds).toHaveLength(0);
@@ -108,6 +114,37 @@ describe("confirmPaymentFromVerifiedResult", () => {
 
     const txns = await testDb.select().from(paymentTransactions).where(eq(paymentTransactions.bookingId, booking.bookingId));
     expect(txns).toHaveLength(1); // still just one, not two
+  });
+
+  it("serializes concurrent browser and webhook confirmations into one effective payment", async () => {
+    const booking = await makeBooking();
+    const payment = verified({ reference: booking.reference });
+    const outcomes = await Promise.all([
+      confirmPaymentFromVerifiedResult(payment),
+      confirmPaymentFromVerifiedResult(payment),
+    ]);
+    expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(["already_confirmed", "confirmed"]);
+
+    const transactions = await testDb.select().from(paymentTransactions).where(eq(paymentTransactions.bookingId, booking.bookingId));
+    expect(transactions).toHaveLength(1);
+    expect(transactions[0]!.status).toBe("SUCCESS");
+  });
+
+  it("does not allow one Paystack transaction identifier to pay two bookings", async () => {
+    const first = await makeBooking();
+    const second = await makeBooking();
+    const payment = verified({ reference: first.reference });
+    await confirmPaymentFromVerifiedResult(payment);
+
+    await expect(
+      confirmPaymentFromVerifiedResult({ ...payment, reference: second.reference }),
+    ).rejects.toThrow(/different booking/);
+    const transactions = await testDb
+      .select()
+      .from(paymentTransactions)
+      .where(eq(paymentTransactions.paystackTransactionId, payment.paystackTransactionId));
+    expect(transactions).toHaveLength(1);
+    expect(transactions[0]!.bookingId).toBe(first.bookingId);
   });
 
   it("confirms successfully when Paystack added a customer-borne fee on top - amountMinor differs from requestedAmountMinor, but requestedAmountMinor matches the booking", async () => {
@@ -139,6 +176,16 @@ describe("confirmPaymentFromVerifiedResult", () => {
     expect(tickets.some((t) => t.subject.includes("Amount mismatch"))).toBe(true);
   });
 
+  it("refuses a currency mismatch", async () => {
+    const booking = await makeBooking();
+    const outcome = await confirmPaymentFromVerifiedResult(
+      verified({ reference: booking.reference, currency: "USD" }),
+    );
+    expect(outcome.status).toBe("amount_mismatch");
+    const [row] = await testDb.select().from(bookings).where(eq(bookings.id, booking.bookingId));
+    expect(row!.paymentStatus).toBe("PENDING");
+  });
+
   it("does nothing for a non-successful verification result", async () => {
     const booking = await makeBooking();
     const outcome = await confirmPaymentFromVerifiedResult(verified({ reference: booking.reference, status: "failed" }));
@@ -167,8 +214,11 @@ describe("confirmPaymentFromVerifiedResult", () => {
     const [row] = await testDb.select().from(bookings).where(eq(bookings.id, booking.bookingId));
     expect(row!.paymentStatus).toBe("PAID"); // money is real, so mark it paid
     expect(row!.accommodationStatus).toBe("CANCELLED"); // but do NOT silently re-claim inventory
+    expect(row!.allocationStatus).toBe("NOT_ALLOCATED");
 
     const tickets = await testDb.select().from(supportTickets).where(eq(supportTickets.bookingId, booking.bookingId));
     expect(tickets.some((t) => t.subject.includes("hold expired"))).toBe(true);
+    expect((await confirmPaymentFromVerifiedResult(verified({ reference: booking.reference }))).status).toBe("already_confirmed");
+    expect(await testDb.select().from(paymentTransactions).where(eq(paymentTransactions.bookingId, booking.bookingId))).toHaveLength(1);
   });
 });

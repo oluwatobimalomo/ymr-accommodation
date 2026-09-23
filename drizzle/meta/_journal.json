@@ -64,6 +64,13 @@
       "when": 1790125826284,
       "tag": "0008_lodge_proximity",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790155513224,
+      "tag": "0009_booking_payment_hardening",
+      "breakpoints": true
     }
   ]
 }

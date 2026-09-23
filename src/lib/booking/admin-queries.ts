@@ -1,6 +1,6 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull, ne } from "drizzle-orm";
 import { getDb } from "@/db/client";
-import { accommodationCategories, bookingOccupants, bookings, lodges } from "@/db/schema";
+import { accommodationCategories, bookingOccupants, bookings, inventoryHolds, lodges, privateUnitAllocations } from "@/db/schema";
 import { recordAudit } from "@/lib/audit";
 import { authorize, type Actor } from "@/lib/authz/authorize";
 
@@ -43,18 +43,39 @@ export async function cancelBooking(actor: Actor, bookingId: string, reason?: st
   authorize(actor, "booking.cancel");
   const db = getDb();
   return db.transaction(async (tx) => {
-    const [before] = await tx.select().from(bookings).where(eq(bookings.id, bookingId)).limit(1);
+    const [before] = await tx.select().from(bookings).where(eq(bookings.id, bookingId)).for("update").limit(1);
     if (!before) throw new Error("That booking could not be found.");
 
+    const nextPaymentStatus = before.paymentStatus === "PAID" || before.paymentStatus === "REFUNDED"
+      ? before.paymentStatus
+      : "CANCELLED";
     const [after] = await tx
       .update(bookings)
-      .set({ paymentStatus: "CANCELLED", accommodationStatus: "CANCELLED", updatedAt: new Date() })
-      .where(eq(bookings.id, bookingId))
+      .set({ paymentStatus: nextPaymentStatus, accommodationStatus: "CANCELLED", allocationStatus: "NOT_ALLOCATED", updatedAt: new Date() })
+      .where(and(eq(bookings.id, bookingId), ne(bookings.accommodationStatus, "CANCELLED")))
       .returning();
+    if (!after) return; // already cancelled; preserve idempotency
+    const released = await tx
+      .update(privateUnitAllocations)
+      .set({ releasedAt: new Date(), releaseReason: "booking cancelled" })
+      .where(and(eq(privateUnitAllocations.bookingId, bookingId), isNull(privateUnitAllocations.releasedAt)))
+      .returning({ unitId: privateUnitAllocations.unitId });
+    if (released.length) {
+      await recordAudit(tx, {
+        actor,
+        action: "inventory.private_unit_released",
+        entityType: "booking",
+        entityId: bookingId,
+        before: { unitIds: released.map((row) => row.unitId) },
+        after: { released: true },
+        reason: reason ?? "booking cancelled",
+      });
+    }
     await tx
       .update(bookingOccupants)
       .set({ bedspaceId: null, roomId: null, unitId: null })
       .where(eq(bookingOccupants.bookingId, bookingId));
+    await tx.delete(inventoryHolds).where(eq(inventoryHolds.bookingId, bookingId));
 
     await recordAudit(tx, {
       actor,
@@ -63,7 +84,7 @@ export async function cancelBooking(actor: Actor, bookingId: string, reason?: st
       entityId: bookingId,
       before,
       after,
-      reason,
+      reason: reason ?? (before.paymentStatus === "PAID" ? "paid booking accommodation cancelled; refund remains separate" : undefined),
     });
   });
 }

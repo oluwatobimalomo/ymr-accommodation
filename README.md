@@ -1,5 +1,11 @@
 # YMR Accommodation - Phase 1-4 (Foundation, Inventory, Booking, Operations groundwork)
 
+## Phase 5A — booking and payment correctness
+
+Private whole-unit bookings now create a durable `private_unit_allocations` claim. Its partial unique index permits multiple occupants on one booking while preventing two unreleased bookings from claiming the same unit. The claim remains after the payment hold is removed and is released on cancellation or pending-hold expiry. Migration `0009_booking_payment_hardening.sql` backfills active claims; it aborts with a diagnostic if existing active allocations or Paystack transaction IDs are duplicated, so those records must be reviewed before deployment.
+
+Payment confirmation locks the booking row and uses Paystack's transaction ID as a unique idempotency key. Webhook event rows are written only after verification and confirmation (including explicit manual-review outcomes) succeed. Transient verification/database failures return a retryable non-2xx response and leave the event unrecorded. Cancelling paid accommodation preserves `payment_status = PAID`; it records accommodation cancellation and releases inventory, while refund status remains a separate manual finance action.
+
 Next.js 15 (App Router) + TypeScript, Drizzle ORM, Postgres (Neon), deployed on Vercel.
 
 ## Everything built so far, by area
@@ -14,7 +20,7 @@ Next.js 15 (App Router) + TypeScript, Drizzle ORM, Postgres (Neon), deployed on 
 
 **Admin dashboard:** real counts (lodges, categories, units, bedspaces, live availability, bookings by payment status), not a placeholder.
 
-Tests: **200 total**, all against real (in-process) Postgres, not mocks.
+Tests: **243 as of Phase 5A**, all against real (in-process) Postgres, not mocks.
 
 ## This pass: fixing your existing data, not just future data, plus real gaps I'd left unresolved
 
@@ -110,12 +116,12 @@ Tests: **213 total** (was 212).
 
 Real, end-to-end payment integration, built to match the researched Paystack API contract exactly (Bearer auth, kobo amounts, HMAC-SHA512 webhook signatures over the raw body).
 
-- **Schema:** `payment_transactions` (one row per attempt, keeps the full history) and `payment_events` (idempotency guard — a duplicate webhook delivery hits a unique-constraint violation and is safely ignored).
+- **Schema:** `payment_transactions` (payment history with a unique Paystack transaction ID) and `payment_events` (successfully processed webhook events; duplicate delivery is safely ignored).
 - **`src/lib/payments/paystack.ts`:** `initializeTransaction`, `verifyTransaction`, `verifyWebhookSignature`. A thin, mockable client — the actual HTTP calls to Paystack **could not be tested from this sandbox** (no network access to `api.paystack.co` here), so signature verification and all confirmation logic are fully tested, but the live "create a booking, pay with a test card, see it confirm" path needs to be run on your machine.
 - **`src/lib/payments/confirm-payment.ts`:** the single idempotent confirmation function that both the webhook and the browser-callback verification call. Handles: matching payment (marks PAID + ALLOCATED, deletes the now-unneeded hold), duplicate confirmation (no-op), amount/currency mismatch (refuses to mark paid, opens a support ticket automatically instead), and the rare case of payment landing after a hold already expired (marks PAID since the money is real, but does **not** silently re-claim inventory — opens a ticket for manual reallocation instead).
 - **A real bug found and fixed while testing this**: the mismatch and manual-review paths originally called the ticket-creation service function from inside an already-open transaction — since that function opens its own transaction, this deadlocked on the same connection. Four tests genuinely hung on this before it was fixed; now fixed by writing directly against the caller's transaction instead. Worth knowing this class of bug exists and to watch for it if you add more cross-service calls inside transactions later.
 - **Booking flow:** `/api/booking/create` now initializes a Paystack transaction and redirects to the hosted checkout page after creating the booking. If `PAYSTACK_SECRET_KEY` isn't set, it falls back to the plain confirmation page at PENDING, so local dev still works before you add keys.
-- **Webhook:** `/api/webhooks/paystack` — verifies signature over the raw body, dedupes via `payment_events`, re-verifies against Paystack's API directly rather than trusting the payload, then calls the shared confirmation function.
+- **Webhook:** `/api/webhooks/paystack` — verifies signature over the raw body, re-verifies against Paystack's API directly rather than trusting the payload, then calls the shared confirmation function. A `payment_events` row means handling completed; transient failures remain retryable and are not marked processed.
 - Admin booking detail page now shows the payment transaction history for that booking.
 
 **To actually test this yourself:** add `PAYSTACK_SECRET_KEY` (your test-mode secret key) to `.env.local`, restart the dev server, and make a real test booking. For the webhook specifically to reach your local machine, Paystack needs a publicly reachable URL — either deploy to Vercel first, or use a tunnel tool like ngrok for local testing, and register that URL in your Paystack dashboard under Settings → API Keys & Webhooks. The browser-callback verification path works in plain local dev without any tunnel, since your server calls out to Paystack directly.

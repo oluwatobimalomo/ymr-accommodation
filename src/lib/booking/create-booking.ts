@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import {
   accommodationCategories,
@@ -13,6 +13,7 @@ import {
 } from "@/db/schema";
 import { autoHoldBedspaces, autoHoldUnit, holdBedspace, holdEntireRoom, holdUnit, InventoryUnavailableError } from "./holds";
 import { nextBookingReference } from "./reference";
+import { recordAudit } from "@/lib/audit";
 
 export interface OccupantInput {
   name: string;
@@ -105,20 +106,39 @@ export async function createBooking(input: CreateBookingInput): Promise<CreateBo
       .returning();
     if (!booking) throw new Error("Could not create the booking.");
 
-    await tx.insert(bookingOccupants).values(
-      input.occupants.map((o, i) => ({
-        bookingId: booking.id,
-        name: o.name,
-        phone: o.phone ?? "",
-        email: o.email ?? "",
-        gender: o.gender,
-        bedspaceId: assignments[i]?.bedspaceId ?? null,
-        unitId: assignments[i]?.unitId ?? null,
-      })),
-    );
+    try {
+      await tx.insert(bookingOccupants).values(
+        input.occupants.map((o, i) => ({
+          bookingId: booking.id,
+          name: o.name,
+          phone: o.phone ?? "",
+          email: o.email ?? "",
+          gender: o.gender,
+          bedspaceId: assignments[i]?.bedspaceId ?? null,
+          unitId: assignments[i]?.unitId ?? null,
+        })),
+      );
+    } catch (error) {
+      // The occupant trigger creates the durable private-unit claim. Its
+      // partial unique index is the final guard against a competing claim.
+      if (isUniqueViolation(error)) {
+        throw new InventoryUnavailableError("This accommodation was just reserved by another participant.");
+      }
+      throw error;
+    }
+
+    const targetUnitIds = [...new Set(assignments.map((a) => a.unitId).filter((v): v is string => !!v))];
+    if (category.mode === "PRIVATE" && targetUnitIds.length) {
+      await recordAudit(tx, {
+        actor: null,
+        action: "inventory.private_unit_reserved",
+        entityType: "booking",
+        entityId: booking.id,
+        after: { unitIds: targetUnitIds },
+      });
+    }
 
     const targetBedspaceIds = assignments.map((a) => a.bedspaceId).filter((v): v is string => !!v);
-    const targetUnitIds = assignments.map((a) => a.unitId).filter((v): v is string => !!v);
     if (targetBedspaceIds.length) {
       await tx
         .update(inventoryHolds)
@@ -131,6 +151,10 @@ export async function createBooking(input: CreateBookingInput): Promise<CreateBo
 
     return { reference, bookingId: booking.id, amountMinor, currency: event.currency };
   });
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "23505";
 }
 
 async function resolveAssignments(
@@ -198,6 +222,12 @@ async function resolveAssignments(
   // PRIVATE, whole-unit only (see the scope note on createBooking).
   if (input.unitId) {
     if (!category.customerSelectsRoom) throw new Error("This category does not let customers choose a specific unit.");
+    const [unit] = await tx
+      .select({ id: accommodationUnits.id })
+      .from(accommodationUnits)
+      .where(and(eq(accommodationUnits.id, input.unitId), eq(accommodationUnits.categoryId, category.id)))
+      .limit(1);
+    if (!unit) throw new Error("That unit is not part of this accommodation category.");
     await holdUnit(tx, input.unitId, holdMinutes);
     return input.occupants.map(() => ({ unitId: input.unitId }));
   }

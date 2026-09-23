@@ -1,6 +1,7 @@
-import { bigint, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { bookings } from "./booking";
 import { transactionStatus } from "./enums";
+import { sql } from "drizzle-orm";
 
 /**
  * One row per Paystack transaction attempt against a booking. `reference`
@@ -23,7 +24,13 @@ export const paymentTransactions = pgTable("payment_transactions", {
   paidAt: timestamp("paid_at", { withTimezone: true }),
   rawPayload: jsonb("raw_payload"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  // Initialization attempts may not yet have a gateway id. PostgreSQL's
+  // partial index enforces uniqueness only once Paystack supplies one.
+  uniqueIndex("payment_transactions_paystack_id_uq")
+    .on(t.paystackTransactionId)
+    .where(sql`${t.paystackTransactionId} is not null`),
+]);
 
 /**
  * Idempotency guard for webhook delivery: Paystack can and does retry
