@@ -63,8 +63,16 @@ export function ApartmentForm({ lodgeId, facilities, action }: Props) {
             </select>
           </div>
           <div className="field">
-            <label htmlFor="bedspaceCount">Number of bedspaces</label>
+            <label htmlFor="bedspaceCount">Number of bedspaces per room</label>
             <input id="bedspaceCount" name="bedspaceCount" type="number" min="1" required defaultValue={4} />
+          </div>
+          <div className="field">
+            <label htmlFor="roomCount">Number of rooms</label>
+            <input id="roomCount" name="roomCount" type="number" min="1" defaultValue={1} />
+            <p className="listing-meta" style={{ margin: 0 }}>
+              For a single dormitory hall, leave this at 1. For many small identical rooms (e.g. 190 rooms of 4), set the
+              count here and they&rsquo;ll all be created together under this one listing.
+            </p>
           </div>
           <div className="field">
             <label htmlFor="priceNaira-shared">Price per bedspace</label>

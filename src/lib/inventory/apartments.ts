@@ -34,6 +34,14 @@ export interface CreateApartmentInput {
   // SHARED
   genderRestriction?: "MALE" | "FEMALE" | "ANY";
   bedspaceCount?: number;
+  /**
+   * Number of identical rooms to create under this one apartment, each with
+   * `bedspaceCount` bedspaces of its own (independently lettered A, B, C...
+   * within each room). Defaults to 1. This is what makes something like
+   * "190 rooms of 4 bedspaces" a single submission instead of 190 separate
+   * ones - all 190 rooms share one category, one price, one listing.
+   */
+  roomCount?: number;
 }
 
 function slugCode(name: string): string {
@@ -45,19 +53,15 @@ function slugCode(name: string): string {
 }
 
 /**
- * Spreadsheet-style column naming: A, B, ... Z, AA, AB, ... - unlike falling
- * back to plain numbers past 26, this never mixes digit and letter sorting
- * (which put "27".."40" before "A".."Z" in a plain text sort) and never
- * looks like something broke once a room has more than 26 bedspaces.
+ * Plain sequential numbering (1, 2, 3, ...), matching real dormitory bed
+ * numbering conventions. The existing sort order elsewhere in this file
+ * (length first, then alphabetically) already handles this correctly for
+ * pure numeric strings without any further change: "1".."9" (length 1)
+ * sort before "10".."40" (length 2), and same-length digit strings sort
+ * alphabetically in the same order as numerically.
  */
-function letterForIndex(index: number): string {
-  let n = index;
-  let out = "";
-  do {
-    out = String.fromCharCode(65 + (n % 26)) + out;
-    n = Math.floor(n / 26) - 1;
-  } while (n >= 0);
-  return out;
+function bedspaceLabelForIndex(index: number): string {
+  return String(index + 1);
 }
 
 export async function createApartment(actor: Actor, input: CreateApartmentInput) {
@@ -102,24 +106,28 @@ export async function createApartment(actor: Actor, input: CreateApartmentInput)
         await tx.insert(unitFacilities).values(input.facilityIds.map((facilityId) => ({ unitId: unit.id, facilityId })));
       }
     } else {
-      const count = input.bedspaceCount ?? 0;
-      if (count < 1) throw new Error("Please enter at least 1 bedspace.");
-      const [room] = await tx
-        .insert(rooms)
-        .values({
-          unitId: unit.id,
-          name: input.name,
-          code: "R1",
-          genderRestriction: input.genderRestriction ?? "ANY",
-        })
-        .returning();
-      if (!room) throw new Error("Could not create the apartment.");
+      const bedspacesPerRoom = input.bedspaceCount ?? 0;
+      if (bedspacesPerRoom < 1) throw new Error("Please enter at least 1 bedspace.");
+      const roomCount = Math.max(1, input.roomCount ?? 1);
 
-      const values = Array.from({ length: count }, (_, i) => ({
-        roomId: room.id,
-        letter: letterForIndex(i),
-      }));
-      await tx.insert(bedspaces).values(values);
+      for (let r = 0; r < roomCount; r++) {
+        const [room] = await tx
+          .insert(rooms)
+          .values({
+            unitId: unit.id,
+            name: roomCount > 1 ? `Room ${r + 1}` : input.name,
+            code: `R${r + 1}`,
+            genderRestriction: input.genderRestriction ?? "ANY",
+          })
+          .returning();
+        if (!room) throw new Error("Could not create the apartment.");
+
+        const values = Array.from({ length: bedspacesPerRoom }, (_, i) => ({
+          roomId: room.id,
+          letter: bedspaceLabelForIndex(i),
+        }));
+        await tx.insert(bedspaces).values(values);
+      }
     }
 
     await recordAudit(tx, {
@@ -170,11 +178,15 @@ export async function listApartmentsForLodge(lodgeId: string): Promise<Apartment
   return rows.map((r) => ({ ...r, image: r.images[0] }));
 }
 
+export interface ApartmentRoomDetail {
+  room: typeof rooms.$inferSelect;
+  bedspaceList: (typeof bedspaces.$inferSelect)[];
+}
+
 export interface ApartmentDetail {
   unit: typeof accommodationUnits.$inferSelect;
   category: typeof accommodationCategories.$inferSelect;
-  room: typeof rooms.$inferSelect | null;
-  bedspaceList: (typeof bedspaces.$inferSelect)[];
+  rooms: ApartmentRoomDetail[];
   facilityIds: string[];
 }
 
@@ -185,17 +197,20 @@ export async function getApartmentDetail(unitId: string): Promise<ApartmentDetai
   const [category] = await db.select().from(accommodationCategories).where(eq(accommodationCategories.id, unit.categoryId)).limit(1);
   if (!category) return null;
 
-  const [room] = await db.select().from(rooms).where(eq(rooms.unitId, unitId)).limit(1);
-  const bedspaceList = room
-    ? await db
-        .select()
-        .from(bedspaces)
-        .where(eq(bedspaces.roomId, room.id))
-        .orderBy(sql`length(${bedspaces.letter})`, bedspaces.letter)
-    : [];
+  const roomRows = await db.select().from(rooms).where(eq(rooms.unitId, unitId)).orderBy(sql`length(${rooms.code})`, rooms.code);
+  const roomDetails: ApartmentRoomDetail[] = [];
+  for (const room of roomRows) {
+    const bedspaceList = await db
+      .select()
+      .from(bedspaces)
+      .where(eq(bedspaces.roomId, room.id))
+      .orderBy(sql`length(${bedspaces.letter})`, bedspaces.letter);
+    roomDetails.push({ room, bedspaceList });
+  }
+
   const facilityRows = await db.select({ facilityId: unitFacilities.facilityId }).from(unitFacilities).where(eq(unitFacilities.unitId, unitId));
 
-  return { unit, category, room: room ?? null, bedspaceList, facilityIds: facilityRows.map((f) => f.facilityId) };
+  return { unit, category, rooms: roomDetails, facilityIds: facilityRows.map((f) => f.facilityId) };
 }
 
 export interface UpdateApartmentInput {
@@ -257,23 +272,61 @@ export async function updateApartment(actor: Actor, unitId: string, input: Updat
 }
 
 /** Adds more bedspaces to an existing shared apartment (e.g. Room 1 gains letters E, F). */
-export async function addBedspacesToApartment(actor: Actor, unitId: string, count: number) {
+/** Adds more bedspaces to one specific room within an apartment (a room may not be the apartment's only one, now that apartments can have many rooms). */
+export async function addBedspacesToRoom(actor: Actor, roomId: string, count: number) {
   authorize(actor, "inventory.write");
   if (count < 1) throw new Error("Enter at least 1 bedspace to add.");
   const db = getDb();
   return db.transaction(async (tx) => {
-    const [room] = await tx.select().from(rooms).where(eq(rooms.unitId, unitId)).limit(1);
-    if (!room) throw new Error("This apartment has no room configured yet.");
-    const existing = await tx.select().from(bedspaces).where(eq(bedspaces.roomId, room.id));
+    const [room] = await tx.select().from(rooms).where(eq(rooms.id, roomId)).limit(1);
+    if (!room) throw new Error("That room could not be found.");
+    const existing = await tx.select().from(bedspaces).where(eq(bedspaces.roomId, roomId));
     const startIndex = existing.length;
-    const values = Array.from({ length: count }, (_, i) => ({ roomId: room.id, letter: letterForIndex(startIndex + i) }));
+    const values = Array.from({ length: count }, (_, i) => ({ roomId, letter: bedspaceLabelForIndex(startIndex + i) }));
     await tx.insert(bedspaces).values(values);
     await recordAudit(tx, {
       actor,
       action: "inventory.bedspaces_added",
+      entityType: "room",
+      entityId: roomId,
+      after: { added: count },
+    });
+  });
+}
+
+/** Adds a whole new room to an existing shared apartment, e.g. going from 189 to 190 rooms without recreating the apartment. */
+export async function addRoomToApartment(actor: Actor, unitId: string, bedspaceCount: number) {
+  authorize(actor, "inventory.write");
+  if (bedspaceCount < 1) throw new Error("Enter at least 1 bedspace for the new room.");
+  const db = getDb();
+  return db.transaction(async (tx) => {
+    const [unit] = await tx.select().from(accommodationUnits).where(eq(accommodationUnits.id, unitId)).limit(1);
+    if (!unit) throw new Error("That apartment could not be found.");
+    const [category] = await tx.select().from(accommodationCategories).where(eq(accommodationCategories.id, unit.categoryId)).limit(1);
+    if (!category) throw new Error("That apartment's category could not be found.");
+
+    const existingRooms = await tx.select().from(rooms).where(eq(rooms.unitId, unitId));
+    const nextIndex = existingRooms.length + 1;
+    const [room] = await tx
+      .insert(rooms)
+      .values({
+        unitId,
+        name: `Room ${nextIndex}`,
+        code: `R${nextIndex}`,
+        genderRestriction: category.genderRestriction,
+      })
+      .returning();
+    if (!room) throw new Error("Could not create the room.");
+
+    const values = Array.from({ length: bedspaceCount }, (_, i) => ({ roomId: room.id, letter: bedspaceLabelForIndex(i) }));
+    await tx.insert(bedspaces).values(values);
+
+    await recordAudit(tx, {
+      actor,
+      action: "inventory.room_added_to_apartment",
       entityType: "accommodation_unit",
       entityId: unitId,
-      after: { added: count },
+      after: { roomName: room.name, bedspaceCount },
     });
   });
 }

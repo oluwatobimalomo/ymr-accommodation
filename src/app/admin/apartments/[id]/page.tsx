@@ -29,7 +29,7 @@ export default async function ApartmentDetailPage({
   const { error } = await searchParams;
   const detail = await getApartmentDetail(id);
   if (!detail) notFound();
-  const { unit, category, room, bedspaceList, facilityIds } = detail;
+  const { unit, category, facilityIds } = detail;
   const lodge = await getLodge(category.lodgeId);
   const allFacilities = category.mode === "PRIVATE" ? await listFacilities() : [];
   const selectedFacilityIds = new Set(facilityIds);
@@ -124,56 +124,83 @@ export default async function ApartmentDetailPage({
         </div>
       )}
 
-      {category.mode === "SHARED" && room && (
+      {category.mode === "SHARED" && detail.rooms.length > 0 && (
         <div className="card stack">
-          <h2>Bedspaces</h2>
-          <div className="bed-row">
-            {bedspaceList.map((b) => (
-              <div key={b.id} className="bed" data-state={b.status.toLowerCase()} role="img" aria-label={`Bedspace ${b.letter}, ${STATUS_LABEL[b.status]}`}>
-                <span className="letter">{b.letter}</span>
-                <span className="state">{STATUS_LABEL[b.status]}</span>
+          <h2>Rooms &amp; bedspaces</h2>
+          <p className="listing-meta">
+            {detail.rooms.length} room{detail.rooms.length === 1 ? "" : "s"} · {detail.rooms.reduce((n, r) => n + r.bedspaceList.length, 0)} bedspaces total
+          </p>
+
+          {detail.rooms.map((r) => (
+            <div key={r.room.id} className="stack" style={{ borderTop: "1px solid var(--color-line)", paddingTop: "var(--space-3)" }}>
+              <h3 style={{ margin: 0 }}>{r.room.name}</h3>
+              <div className="bed-row">
+                {r.bedspaceList.map((b) => (
+                  <div
+                    key={b.id}
+                    className="bed"
+                    data-state={b.status.toLowerCase()}
+                    role="img"
+                    aria-label={`${r.room.name}, bedspace ${b.letter}, ${STATUS_LABEL[b.status]}`}
+                  >
+                    <span className="letter">{b.letter}</span>
+                    <span className="state">{STATUS_LABEL[b.status]}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <form method="post" action={`/api/admin/apartments/${unit.id}`} className="stack">
-            <input type="hidden" name="intent" value="add-bedspaces" />
+              <form method="post" action={`/api/admin/apartments/${unit.id}`} style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
+                <input type="hidden" name="intent" value="add-bedspaces" />
+                <input type="hidden" name="roomId" value={r.room.id} />
+                <div className="field" style={{ maxWidth: "120px" }}>
+                  <label htmlFor={`addCount-${r.room.id}`}>Add bedspaces</label>
+                  <input id={`addCount-${r.room.id}`} name="addCount" type="number" min="1" defaultValue={1} />
+                </div>
+                <button className="btn secondary" type="submit">
+                  Add
+                </button>
+              </form>
+            </div>
+          ))}
+
+          <form method="post" action={`/api/admin/apartments/${unit.id}`} style={{ display: "flex", gap: "8px", alignItems: "flex-end", borderTop: "1px solid var(--color-line)", paddingTop: "var(--space-3)" }}>
+            <input type="hidden" name="intent" value="add-room" />
             <div className="field" style={{ maxWidth: "160px" }}>
-              <label htmlFor="addCount">Add more bedspaces</label>
-              <input id="addCount" name="addCount" type="number" min="1" defaultValue={1} />
+              <label htmlFor="new-room-bedspaces">New room&rsquo;s bedspaces</label>
+              <input id="new-room-bedspaces" name="bedspaceCount" type="number" min="1" defaultValue={4} />
             </div>
             <button className="btn secondary" type="submit">
-              Add
+              Add another room
             </button>
           </form>
 
-          {bedspaceList.length > 0 && (
-            <form method="post" action={`/api/admin/apartments/${unit.id}`} className="stack">
-              <input type="hidden" name="intent" value="bedspace-status" />
-              <h3>Change a bedspace&rsquo;s status</h3>
-              <div className="field">
-                <label htmlFor="bedspaceId">Bedspace</label>
-                <select id="bedspaceId" name="bedspaceId" defaultValue={bedspaceList[0]!.id}>
-                  {bedspaceList.map((b) => (
+          <form method="post" action={`/api/admin/apartments/${unit.id}`} className="stack" style={{ borderTop: "1px solid var(--color-line)", paddingTop: "var(--space-3)" }}>
+            <input type="hidden" name="intent" value="bedspace-status" />
+            <h3>Change a bedspace&rsquo;s status</h3>
+            <div className="field">
+              <label htmlFor="bedspaceId">Bedspace</label>
+              <select id="bedspaceId" name="bedspaceId">
+                {detail.rooms.map((r) =>
+                  r.bedspaceList.map((b) => (
                     <option key={b.id} value={b.id}>
-                      {b.letter} — currently {STATUS_LABEL[b.status]}
+                      {r.room.name} — {b.letter} — currently {STATUS_LABEL[b.status]}
                     </option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="bedspace-new-status">New status</label>
-                <select id="bedspace-new-status" name="status" defaultValue="AVAILABLE">
-                  <option value="AVAILABLE">Available</option>
-                  <option value="BLOCKED">Blocked</option>
-                  <option value="MAINTENANCE">Maintenance</option>
-                  <option value="RETIRED">Retired</option>
-                </select>
-              </div>
-              <button className="btn secondary" type="submit">
-                Update
-              </button>
-            </form>
-          )}
+                  )),
+                )}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="bedspace-new-status">New status</label>
+              <select id="bedspace-new-status" name="status" defaultValue="AVAILABLE">
+                <option value="AVAILABLE">Available</option>
+                <option value="BLOCKED">Blocked</option>
+                <option value="MAINTENANCE">Maintenance</option>
+                <option value="RETIRED">Retired</option>
+              </select>
+            </div>
+            <button className="btn secondary" type="submit">
+              Update
+            </button>
+          </form>
         </div>
       )}
     </div>

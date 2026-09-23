@@ -309,7 +309,7 @@ describe("createBooking: PRIVATE whole-unit", () => {
 });
 
 describe("createBooking: gender validation", () => {
-  it("rejects a female occupant selecting a bedspace in a male-only room", async () => {
+  it("rejects a female occupant selecting a bedspace in a male-only room, with a specific actionable message", async () => {
     const { category, beds } = await makeSharedMaleRoom();
     await expect(
       createBooking({
@@ -319,7 +319,31 @@ describe("createBooking: gender validation", () => {
         bookerEmail: "a@a.com",
         occupants: [{ name: "Jane", gender: "FEMALE", bedspaceId: beds[0]!.id }],
       }),
-    ).rejects.toThrow(/gender/);
+    ).rejects.toThrow(/Jane is female.*Male-only.*choose a bedspace in the Female section/s);
+  });
+
+  it("does not leave a stray hold behind when gender validation rejects the booking", async () => {
+    const { category, beds } = await makeSharedMaleRoom();
+    await expect(
+      createBooking({
+        categoryId: category.id,
+        bookerName: "X",
+        bookerPhone: "1",
+        bookerEmail: "a@a.com",
+        occupants: [{ name: "Jane", gender: "FEMALE", bedspaceId: beds[0]!.id }],
+      }),
+    ).rejects.toThrow();
+    // The bedspace must still be genuinely available for a real booking -
+    // the pre-check runs before any hold is created, so nothing to clean up.
+    await expect(
+      createBooking({
+        categoryId: category.id,
+        bookerName: "Y",
+        bookerPhone: "2",
+        bookerEmail: "b@b.com",
+        occupants: [{ name: "John", gender: "MALE", bedspaceId: beds[0]!.id }],
+      }),
+    ).resolves.toBeDefined();
   });
 });
 

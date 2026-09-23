@@ -1,4 +1,5 @@
 import { ErrorBanner } from "@/components/AdminChrome";
+import { Badge } from "@/components/Badge";
 import { BookingStatusTracker } from "@/components/BookingStatusTracker";
 import { getBookingByReference } from "@/lib/booking/queries";
 
@@ -59,22 +60,40 @@ export default async function CheckBookingPage({
 
       {result && (
         <div className="card stack">
-          <h2>{result.booking.reference}</h2>
+          <div>
+            <p className="listing-meta" style={{ margin: 0 }}>
+              {result.lodgeName}
+              {result.categoryName ? ` · ${result.categoryName}` : ""}
+            </p>
+            <h2 style={{ margin: "2px 0 0" }}>{result.booking.reference}</h2>
+          </div>
+
           <BookingStatusTracker
             paymentStatus={result.booking.paymentStatus}
             accommodationStatus={result.booking.accommodationStatus}
           />
-          <p style={{ margin: 0 }}>
-            Payment: {PAYMENT_LABEL[result.booking.paymentStatus]}
-            <br />
-            Accommodation: {ACCOM_LABEL[result.booking.accommodationStatus]}
+
+          <div className="badge-row">
+            <Badge tone={result.booking.paymentStatus === "PAID" ? "brand" : "default"}>
+              Payment: {PAYMENT_LABEL[result.booking.paymentStatus]}
+            </Badge>
+            <Badge tone={result.booking.accommodationStatus === "ALLOCATED" ? "navy" : "default"}>
+              {ACCOM_LABEL[result.booking.accommodationStatus]}
+            </Badge>
+          </div>
+
+          <p style={{ margin: 0, fontWeight: 600 }}>
+            {(result.booking.amountMinor / 100).toLocaleString()} {result.booking.currency}
           </p>
-          <h3>Occupants</h3>
-          <ul>
-            {result.occupants.map((o) => (
-              <li key={o.id}>{o.name}</li>
-            ))}
-          </ul>
+
+          <div>
+            <h3 style={{ marginBottom: "8px" }}>Occupants</h3>
+            <ul style={{ margin: 0, paddingLeft: "20px" }}>
+              {result.occupants.map((o) => (
+                <li key={o.id}>{o.name}</li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
     </div>

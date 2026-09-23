@@ -9,8 +9,14 @@ const STEPS = ["Reserved", "Paid", "Allocated", "Checked in", "Checked out"] as 
 export function BookingStatusTracker({ paymentStatus, accommodationStatus }: Props) {
   if (paymentStatus === "CANCELLED" || accommodationStatus === "CANCELLED") {
     return (
-      <div className="badge" style={{ background: "var(--color-danger-soft)", color: "var(--color-danger)", borderColor: "var(--color-danger)" }}>
-        Cancelled
+      <div
+        className="alert"
+        role="status"
+        style={{ background: "var(--color-danger-soft)", borderColor: "var(--color-danger)", color: "var(--color-danger)" }}
+      >
+        <strong>This booking was cancelled.</strong> If you believe this is a mistake or made a payment for it, please
+        contact <a href="/support" style={{ color: "inherit", textDecoration: "underline" }}>Support</a> with your
+        booking reference.
       </div>
     );
   }

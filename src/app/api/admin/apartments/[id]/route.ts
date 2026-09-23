@@ -1,5 +1,5 @@
 import { handleAdminAction } from "@/lib/admin-action";
-import { addBedspacesToApartment, getApartmentDetail, updateApartment } from "@/lib/inventory/apartments";
+import { addBedspacesToRoom, addRoomToApartment, getApartmentDetail, updateApartment } from "@/lib/inventory/apartments";
 import { setBedspaceStatus } from "@/lib/inventory/bedspaces";
 import { filesToDataUris } from "@/lib/uploads";
 
@@ -25,7 +25,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     if (intent === "add-bedspaces") {
-      await addBedspacesToApartment(actor, id, Number(form.get("addCount") ?? 0));
+      const roomId = String(form.get("roomId") ?? "");
+      await addBedspacesToRoom(actor, roomId, Number(form.get("addCount") ?? 0));
+      return;
+    }
+
+    if (intent === "add-room") {
+      await addRoomToApartment(actor, id, Number(form.get("bedspaceCount") ?? 0));
       return;
     }
 

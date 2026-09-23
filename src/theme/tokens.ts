@@ -43,7 +43,7 @@ export const theme = {
   },
   radius: { sm: "6px", md: "12px", lg: "20px", pill: "999px" },
   space: { 1: "4px", 2: "8px", 3: "12px", 4: "16px", 5: "24px", 6: "32px", 7: "48px", 8: "72px" },
-  layout: { maxWidth: "1120px", tapTarget: "44px" },
+  layout: { maxWidth: "1240px", tapTarget: "44px" },
 } as const;
 
 const kebab = (s: string) => s.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase());

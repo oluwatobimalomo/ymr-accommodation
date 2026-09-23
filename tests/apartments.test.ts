@@ -11,7 +11,7 @@ let client: PGlite;
 let testDb: ReturnType<typeof drizzle>;
 vi.mock("@/db/client", () => ({ getDb: () => testDb }));
 
-const { createApartment, listApartmentsForLodge, getApartmentDetail, updateApartment, addBedspacesToApartment } =
+const { createApartment, listApartmentsForLodge, getApartmentDetail, updateApartment, addBedspacesToRoom, addRoomToApartment } =
   await import("@/lib/inventory/apartments");
 const { createLodge } = await import("@/lib/inventory/lodges");
 
@@ -63,7 +63,7 @@ describe("createApartment: PRIVATE", () => {
 
     const detail = await getApartmentDetail(result.unitId);
     expect(detail!.facilityIds).toEqual([fan!.id]);
-    expect(detail!.room).toBeNull();
+    expect(detail!.rooms).toHaveLength(0);
   });
 
   it("rejects an invalid price", async () => {
@@ -91,9 +91,9 @@ describe("createApartment: SHARED", () => {
     expect(category!.genderRestriction).toBe("MALE");
 
     const detail = await getApartmentDetail(result.unitId);
-    expect(detail!.room).not.toBeNull();
-    expect(detail!.room!.genderRestriction).toBe("MALE");
-    expect(detail!.bedspaceList.map((b) => b.letter)).toEqual(["A", "B", "C", "D"]);
+    expect(detail!.rooms).toHaveLength(1);
+    expect(detail!.rooms[0]!.room.genderRestriction).toBe("MALE");
+    expect(detail!.rooms[0]!.bedspaceList.map((b) => b.letter)).toEqual(["1", "2", "3", "4"]);
 
     // Capacity-sync trigger from Phase 2 should already have picked this up.
     const [unit] = await testDb.select().from(accommodationUnits).where(eq(accommodationUnits.id, result.unitId));
@@ -130,7 +130,7 @@ describe("createApartment: SHARED", () => {
     });
     const detail = await getApartmentDetail(result.unitId);
     await expect(
-      testDb.update(rooms).set({ genderRestriction: "MALE" }).where(eq(rooms.id, detail!.room!.id)),
+      testDb.update(rooms).set({ genderRestriction: "MALE" }).where(eq(rooms.id, detail!.rooms[0]!.room!.id)),
     ).rejects.toThrow();
   });
 });
@@ -174,7 +174,7 @@ describe("updateApartment", () => {
   });
 });
 
-describe("addBedspacesToApartment", () => {
+describe("addBedspacesToRoom", () => {
   it("adds more lettered bedspaces continuing from where the existing ones left off", async () => {
     const lodge = await createLodge(admin, { eventId, name: "L8", slug: "apt-lodge-8" });
     const result = await createApartment(admin, {
@@ -185,25 +185,79 @@ describe("addBedspacesToApartment", () => {
       genderRestriction: "ANY",
       bedspaceCount: 2,
     });
+    const before = await getApartmentDetail(result.unitId);
 
-    await addBedspacesToApartment(admin, result.unitId, 2);
+    await addBedspacesToRoom(admin, before!.rooms[0]!.room.id, 2);
 
     const detail = await getApartmentDetail(result.unitId);
-    expect(detail!.bedspaceList.map((b) => b.letter)).toEqual(["A", "B", "C", "D"]);
+    expect(detail!.rooms[0]!.bedspaceList.map((b) => b.letter)).toEqual(["1", "2", "3", "4"]);
 
     const [unit] = await testDb.select().from(accommodationUnits).where(eq(accommodationUnits.id, result.unitId));
     expect(unit!.capacity).toBe(4); // capacity-sync trigger picked up the new bedspaces too
   });
 
-  it("rejects adding bedspaces to a private apartment with no room", async () => {
-    const lodge = await createLodge(admin, { eventId, name: "L9", slug: "apt-lodge-9" });
-    const result = await createApartment(admin, { lodgeId: lodge.id, name: "Chalet Z", mode: "PRIVATE", priceNaira: 10000 });
-    await expect(addBedspacesToApartment(admin, result.unitId, 2)).rejects.toThrow(/no room/);
+  it("rejects an unknown room id", async () => {
+    await expect(addBedspacesToRoom(admin, "00000000-0000-0000-0000-000000000000", 2)).rejects.toThrow(/could not be found/);
   });
 });
 
-describe("bedspace letter generation past 26", () => {
-  it("uses spreadsheet-style double letters, never falling back to plain numbers", async () => {
+describe("createApartment with roomCount: many identical rooms in one submission", () => {
+  it("creates N independent rooms, each with its own lettered bedspaces, under one apartment", async () => {
+    // This is the exact real-world scenario that motivated roomCount: many
+    // physical rooms of a few bedspaces each, all one listing/one price,
+    // without requiring one "Add Apartment" submission per room.
+    const lodge = await createLodge(admin, { eventId, name: "L11", slug: "apt-lodge-11" });
+    const result = await createApartment(admin, {
+      lodgeId: lodge.id,
+      name: "Shared Quad",
+      mode: "SHARED",
+      priceNaira: 5000,
+      genderRestriction: "FEMALE",
+      bedspaceCount: 4,
+      roomCount: 5, // stands in for "190" at test scale
+    });
+
+    const detail = await getApartmentDetail(result.unitId);
+    expect(detail!.rooms).toHaveLength(5);
+    for (const r of detail!.rooms) {
+      expect(r.bedspaceList.map((b) => b.letter)).toEqual(["1", "2", "3", "4"]);
+      expect(r.room.genderRestriction).toBe("FEMALE"); // every room correctly inherits the category's gender
+    }
+
+    // Total capacity across all rooms, not just the first one.
+    const [unit] = await testDb.select().from(accommodationUnits).where(eq(accommodationUnits.id, result.unitId));
+    expect(unit!.capacity).toBe(20); // 5 rooms x 4 bedspaces
+  });
+});
+
+describe("addRoomToApartment", () => {
+  it("adds one more room to an existing multi-room apartment, correctly inheriting its gender", async () => {
+    const lodge = await createLodge(admin, { eventId, name: "L12", slug: "apt-lodge-12" });
+    const result = await createApartment(admin, {
+      lodgeId: lodge.id,
+      name: "Shared Quad 2",
+      mode: "SHARED",
+      priceNaira: 5000,
+      genderRestriction: "MALE",
+      bedspaceCount: 4,
+      roomCount: 2,
+    });
+
+    await addRoomToApartment(admin, result.unitId, 4);
+
+    const detail = await getApartmentDetail(result.unitId);
+    expect(detail!.rooms).toHaveLength(3);
+    expect(detail!.rooms[2]!.room.name).toBe("Room 3");
+    expect(detail!.rooms[2]!.room.genderRestriction).toBe("MALE");
+    expect(detail!.rooms[2]!.bedspaceList).toHaveLength(4);
+
+    const [unit] = await testDb.select().from(accommodationUnits).where(eq(accommodationUnits.id, result.unitId));
+    expect(unit!.capacity).toBe(12); // 3 rooms x 4
+  });
+});
+
+describe("bedspace numbering past 26, and correct numeric sort order", () => {
+  it("continues as plain numbers with no letter fallback, in correct numeric order", async () => {
     const lodge = await createLodge(admin, { eventId, name: "L10", slug: "apt-lodge-10" });
     const result = await createApartment(admin, {
       lodgeId: lodge.id,
@@ -211,13 +265,12 @@ describe("bedspace letter generation past 26", () => {
       mode: "SHARED",
       priceNaira: 1000,
       genderRestriction: "ANY",
-      bedspaceCount: 28,
+      bedspaceCount: 40,
     });
     const detail = await getApartmentDetail(result.unitId);
-    const letters = detail!.bedspaceList.map((b) => b.letter);
-    expect(letters[25]).toBe("Z");
-    expect(letters[26]).toBe("AA");
-    expect(letters[27]).toBe("AB");
-    expect(letters.every((l) => /^[A-Z]+$/.test(l))).toBe(true); // never a bare number
+    const numbers = detail!.rooms[0]!.bedspaceList.map((b) => b.letter);
+    // The exact bug from the screenshot this was built to fix: plain text
+    // sorting would put "10" before "2". Confirm real numeric order instead.
+    expect(numbers).toEqual(Array.from({ length: 40 }, (_, i) => String(i + 1)));
   });
 });

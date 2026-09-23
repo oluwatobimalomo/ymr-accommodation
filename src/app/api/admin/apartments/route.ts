@@ -29,6 +29,7 @@ export async function POST(request: Request) {
       facilityIds: mode === "PRIVATE" ? form.getAll("facilityIds").map(String) : undefined,
       genderRestriction: mode === "SHARED" ? (String(form.get("genderRestriction")) as "ANY" | "MALE" | "FEMALE") : undefined,
       bedspaceCount: mode === "SHARED" ? Number(form.get("bedspaceCount") ?? 0) : undefined,
+      roomCount: mode === "SHARED" ? Number(form.get("roomCount") ?? 1) : undefined,
     });
 
     return NextResponse.redirect(new URL(`/admin/apartments/${result.unitId}`, request.url), 303);

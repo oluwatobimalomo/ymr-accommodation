@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { ErrorBanner } from "@/components/AdminChrome";
+import { Badge } from "@/components/Badge";
 import { BookingStatusTracker } from "@/components/BookingStatusTracker";
 import { getBookingByReference } from "@/lib/booking/queries";
 import { confirmPaymentFromVerifiedResult } from "@/lib/payments/confirm-payment";
@@ -55,7 +56,7 @@ export default async function BookingConfirmationPage({
   }
 
   if (!data) notFound();
-  const { booking, occupants } = data;
+  const { booking, occupants, lodgeName, categoryName } = data;
 
   // Security: a booking reference alone (e.g. YMR26-ACM-00003) is
   // sequential and guessable by design (the brief requires this exact
@@ -95,15 +96,26 @@ export default async function BookingConfirmationPage({
     <div className="stack">
       <h1>{booking.paymentStatus === "PAID" ? "Booking confirmed" : "Reservation held"}</h1>
       <div className="card stack">
-        <p style={{ margin: 0 }}>
-          Booking reference<br />
-          <strong style={{ fontSize: "1.5rem" }}>{booking.reference}</strong>
-        </p>
+        <div>
+          <p className="listing-meta" style={{ margin: 0 }}>
+            {lodgeName}
+            {categoryName ? ` · ${categoryName}` : ""}
+          </p>
+          <p style={{ margin: "2px 0 0" }}>
+            <strong style={{ fontSize: "1.5rem" }}>{booking.reference}</strong>
+          </p>
+        </div>
+
         <BookingStatusTracker paymentStatus={booking.paymentStatus} accommodationStatus={booking.accommodationStatus} />
-        <p style={{ margin: 0 }}>
-          Amount: {(booking.amountMinor / 100).toLocaleString()} {booking.currency}
-          <br />
-          Payment status: {PAYMENT_LABEL[booking.paymentStatus]}
+
+        <div className="badge-row">
+          <Badge tone={booking.paymentStatus === "PAID" ? "brand" : "default"}>
+            Payment: {PAYMENT_LABEL[booking.paymentStatus]}
+          </Badge>
+        </div>
+
+        <p style={{ margin: 0, fontWeight: 600 }}>
+          {(booking.amountMinor / 100).toLocaleString()} {booking.currency}
         </p>
       </div>
 

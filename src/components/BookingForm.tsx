@@ -52,10 +52,17 @@ export function BookingForm({
   const [entireRoomId, setEntireRoomId] = useState<string | null>(null);
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(units[0]?.id ?? null);
   const [autoCount, setAutoCount] = useState(1);
+  // Only relevant when there's more than one room: which room the customer
+  // is currently looking at. A single-room apartment skips this entirely
+  // and behaves exactly as before. This is what keeps the page usable for
+  // an apartment with many rooms (e.g. 190) - only one room's grid ever
+  // renders at once, instead of rendering all of them unconditionally.
+  const [viewingRoomId, setViewingRoomId] = useState<string | null>(rooms.length === 1 ? rooms[0]!.id : null);
 
   const usesBedspacePicker = mode === "SHARED" && customerSelectsBedspace;
   const usesAutoCount = (mode === "SHARED" && !customerSelectsBedspace) || (mode === "PRIVATE" && !customerSelectsRoom);
   const usesUnitPicker = mode === "PRIVATE" && customerSelectsRoom;
+  const needsRoomPicker = usesBedspacePicker && rooms.length > 1;
 
   const occupantSlots: OccupantDraft[] = usesBedspacePicker ? selected : Array.from({ length: autoCount }, () => ({}));
 
@@ -79,6 +86,7 @@ export function BookingForm({
   }
 
   const canSubmit = usesBedspacePicker ? occupantSlots.length > 0 : usesUnitPicker ? !!selectedUnitId : autoCount > 0;
+  const viewingRoom = rooms.find((r) => r.id === viewingRoomId);
 
   return (
     <form method="post" action={action} className="stack">
@@ -87,19 +95,51 @@ export function BookingForm({
       {entireRoomId && <input type="hidden" name="entireRoomId" value={entireRoomId} />}
       {usesUnitPicker && selectedUnitId && <input type="hidden" name="unitId" value={selectedUnitId} />}
 
-      {usesBedspacePicker && (
+      {usesBedspacePicker && needsRoomPicker && !viewingRoom && (
         <div className="stack">
-          <h2>Choose your bedspace{rooms.length > 1 ? "(s)" : ""}</h2>
+          <h2>Choose a room</h2>
+          <p>{rooms.length} rooms available. Pick one to see its bedspaces.</p>
+          <div className="grid">
+            {rooms.map((room) => {
+              const availableCount = room.bedspaces.filter((b) => b.status === "AVAILABLE").length;
+              return (
+                <button
+                  type="button"
+                  key={room.id}
+                  className="listing-card"
+                  style={{ textAlign: "left", cursor: "pointer", font: "inherit" }}
+                  onClick={() => setViewingRoomId(room.id)}
+                >
+                  <div className="listing-body">
+                    <h3>{room.name}</h3>
+                    <p className="listing-meta">
+                      {availableCount} of {room.bedspaces.length} available
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {usesBedspacePicker && viewingRoom && (
+        <div className="stack">
+          <h2>Choose your bedspace{occupantSlots.length !== 1 ? "(s)" : ""}</h2>
           <p>Select one bedspace per person. Selected spaces turn into occupant fields below.</p>
-          {rooms.map((room) => {
+          {needsRoomPicker && (
+            <button type="button" className="btn secondary" onClick={() => setViewingRoomId(null)} style={{ alignSelf: "flex-start" }}>
+              &larr; Choose a different room
+            </button>
+          )}
+          {(() => {
+            const room = viewingRoom;
             const allFree = room.bedspaces.every((b) => b.status === "AVAILABLE");
             return (
-              <div key={room.id} className="card stack">
-                <h3>
-                  {room.name} {room.genderRestriction !== "ANY" ? `(${room.genderRestriction.toLowerCase()})` : ""}
-                </h3>
+              <div className="card stack">
+                <h3>{room.name}</h3>
                 <div className="bed-row">
-                  {room.bedspaces.map((b, i) => {
+                  {room.bedspaces.map((b) => {
                     const isSelected = selected.some((s) => s.bedspaceId === b.id);
                     const state = isSelected ? "selected" : b.status === "AVAILABLE" ? "available" : b.status.toLowerCase();
                     return (
@@ -122,7 +162,7 @@ export function BookingForm({
                 )}
               </div>
             );
-          })}
+          })()}
         </div>
       )}
 

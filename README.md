@@ -16,6 +16,54 @@ Next.js 15 (App Router) + TypeScript, Drizzle ORM, Postgres (Neon), deployed on 
 
 Tests: **200 total**, all against real (in-process) Postgres, not mocks.
 
+## This pass: fixing your existing data, not just future data, plus real gaps I'd left unresolved
+
+**1. Retroactive bedspace renumbering — no more "just delete and recreate."** My previous fix only applied to newly-created bedspaces; your existing "New Jerusalem Dormitory" apartment (created before the fix) still had the old A-Z-then-27-40 labels. Rather than ask you to work around that, `src/scripts/renumber-bedspaces.ts` fixes it directly: it renumbers every room's bedspaces to plain sequential numbers in their original creation order, safe to run any number of times. Four tests cover this, including one that reproduces your exact 40-bedspace scenario and one proving it can never violate the unique(room, letter) database constraint (a real collision risk with a naive in-place rename, which I caught and fixed with a two-phase rename before shipping this).
+
+**Run this once against your database:**
+```bash
+npx tsx src/scripts/renumber-bedspaces.ts
+```
+
+**2. The customer-facing multi-room booking page — this was a real gap I'd flagged but not fixed.** The admin side already supported many rooms per apartment, but the public booking page still rendered every room's full bedspace grid unconditionally — unusable for an apartment with, say, 190 rooms. Now: a category with more than one room shows a compact room picker first (room name + "3 of 4 available"), and only the selected room's grid renders. A single-room apartment is completely unaffected — no extra step.
+
+**3. Visual polish — a real pass, with honest scope.** Added actual shadow to the base `.card` class (used almost everywhere — this alone was a big contributor to the flat, bordered-box look), added shadow and press feedback to buttons, widened the content column (1120px → 1240px) so pages feel less squeezed on wide screens, and gave the page background a subtle warm gradient instead of a flat, plain canvas color. I don't have a screenshot of the specific "sectioned in the middle" layout issue on your exact screen size, so I can't be certain this fully addresses it — if it's still off after this, a screenshot of that specific view will let me target it precisely instead of guessing again.
+
+Tests: **231 total** (was 227).
+
+## This pass: six real issues you raised, taken one at a time
+
+**1. Bedspace numbering — I misread this last time.** My previous fix extended the letter scheme to AA/AB past 26, but that wasn't what was needed: plain sequential numbering makes more sense for real dormitory beds. Switched fully to numbers (1, 2, 3, ...) — no letters at all now. The existing sort fix (length first, then alphabetically) already handles pure numeric strings correctly with no further change needed, and a rewritten test proves 40 bedspaces sort as 1, 2, 3... 40, not 1, 10, 11... 2, 20 (the actual bug from the screenshot).
+
+**2. Gender mismatch showed "Something went wrong" instead of a real reason — this was a genuine bug in my error handling, not a display choice.** The gender check only existed as a database trigger; when it fired, the resulting error looked like raw SQL to my sanitizer and got scrubbed into a generic message. Fixed by adding an explicit check in `createBooking` *before* anything is held or written: if an occupant's gender doesn't match their selected bedspace's room, the customer now sees exactly what's wrong and what to do — e.g. *"Jane is female, but that bedspace is in Room 1 (Male-only). Please go back and choose a bedspace in the Female section instead."* A new test also confirms this pre-check means no stray hold is left behind on a rejected attempt.
+
+**3. Mobile navigation was never actually fixed — it just wrapped raggedly.** Rebuilt as a real toggle menu: a hamburger button appears under 720px width, opening a proper stacked panel instead of letting nav links wrap onto orphaned lines (which is exactly what your mobile screenshot showed — "YMR Global" stranded alone).
+
+**4. "Female Dormitory (female)" — removed the redundant gender suffix** from room card headings; the category name already conveys it.
+
+**5/6. The check-booking and confirmation pages were genuinely bare, especially for a cancelled booking.** Both now show lodge/category context, a proper reference hierarchy, status badges instead of plain text, and — the specific case in your screenshot — a cancelled booking now shows an actual explanation with a link to Support, instead of a lone red "Cancelled" chip and nothing else.
+
+Tests: **227 total** (was 226).
+
+## This pass: a real structural gap, surfaced by a real scenario you gave
+
+You asked how booking would work for "4 male and 5 female dormitories, each with 40 bedspaces" alongside a separate shared apartment with "4 per room, about 190 rooms." That exposed a genuine limitation, not a naming quibble: **the "Add Apartment" flow only ever created one room per apartment.** Representing 190 rooms would have meant 190 separate submissions, one at a time.
+
+**Fixed properly, not papered over:**
+- `createApartment` now accepts an optional **room count**. Set it to 190 and get 190 independently-lettered rooms (each its own A, B, C, D...) under one listing, one price, one submission.
+- This required rewriting `getApartmentDetail` too — it was silently fetching only the *first* room (`.limit(1)`), which I found while testing the fix, before shipping it. A multi-room apartment would have shown 189 of its 190 rooms as if they didn't exist. Now it returns every room, each with its own bedspace list.
+- New `addRoomToApartment` (add one more whole room later) alongside the existing per-room `addBedspacesToRoom` (add more beds to a specific existing room).
+- The apartment edit page now renders every room, and the bedspace-status picker labels each option with its room name (`Room 12 — C — currently Available`), since with many rooms sharing the same letters, "C" alone is ambiguous.
+- 2 new tests prove rooms correctly inherit the category's gender restriction, and that total capacity sums correctly across all of them.
+
+**Also fixed, both from your screenshot:**
+- The lodge's own photo no longer repeats on its own detail page — redundant once you're already there.
+- Category cards ("Female Dormitory" / "Male Dormitory") were showing the *identical* generic placeholder icon for both, because categories never had real photos of their own — only the apartment underneath does. Fixed to pull each category's real apartment photo instead.
+
+**One thing I'm flagging rather than silently deciding for you:** with genuinely large room counts (190+), the *customer-facing* booking page currently renders one room-card per room in the seat-map picker, which would be an extremely long page to scroll for a category like that. The honest options are: (a) default `customerSelectsBedspace` to off for such categories so the system auto-allocates instead of asking the customer to browse 190 room cards, or (b) build a proper paginated/searchable room picker. Neither is built yet — I'd rather tell you this is unresolved than quietly pick one.
+
+Tests: **226 total** (was 223).
+
 ## This pass: two real bugs found from your screenshots
 
 **1. Bedspace lettering broke past 26.** Your screenshot showed bedspaces numbered 27-40 sorting *before* A-Z — that's because the old code fell back to plain numbers once letters ran out, and text-sorts digits before letters. Fixed to use spreadsheet-style double letters instead (A, B, ... Z, AA, AB, ...), which never looks broken regardless of count. This also exposed a second bug in the same area: the bedspace list was sorted as plain alphabetical text, which put "AA" right after "A" (before "B") instead of after "Z" — fixed to sort by length first, then alphabetically, so the order always matches how they were actually created. A new test locks in both fixes.

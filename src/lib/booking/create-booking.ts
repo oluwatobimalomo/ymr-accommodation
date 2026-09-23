@@ -155,6 +155,33 @@ async function resolveAssignments(
       const ids = input.occupants.map((o) => o.bedspaceId);
       if (ids.some((id) => !id)) throw new Error("Please select a bedspace for every occupant.");
       if (new Set(ids).size !== ids.length) throw new Error("Each occupant needs a different bedspace.");
+
+      // Check gender BEFORE holding anything or touching the database
+      // trigger that also enforces this: that trigger's job is to be the
+      // unconditional last line of defense, not the first place a mismatch
+      // is ever caught. Catching it here means a real customer sees a
+      // specific, actionable message instead of a generic "something went
+      // wrong" (a mismatch caught only by the trigger surfaces as a raw,
+      // sanitized database error with no useful detail for the customer).
+      const bedspaceRows = await tx
+        .select({ bedspaceId: bedspaces.id, roomGender: rooms.genderRestriction, roomName: rooms.name })
+        .from(bedspaces)
+        .innerJoin(rooms, eq(rooms.id, bedspaces.roomId))
+        .where(inArray(bedspaces.id, ids as string[]));
+      const genderById = new Map(bedspaceRows.map((b) => [b.bedspaceId, b]));
+
+      for (const [i, occupant] of input.occupants.entries()) {
+        const target = genderById.get(ids[i] as string);
+        if (!target) throw new Error("That bedspace could not be found.");
+        if (target.roomGender !== "ANY" && target.roomGender !== occupant.gender) {
+          const wrongLabel = target.roomGender === "MALE" ? "Male" : "Female";
+          const rightLabel = occupant.gender === "MALE" ? "Male" : "Female";
+          throw new Error(
+            `${occupant.name || "One of your occupants"} is ${rightLabel.toLowerCase()}, but that bedspace is in ${target.roomName} (${wrongLabel}-only). Please go back and choose a bedspace in the ${rightLabel} section instead.`,
+          );
+        }
+      }
+
       for (const id of ids as string[]) await holdBedspace(tx, id, holdMinutes);
       return ids.map((id) => ({ bedspaceId: id as string }));
     }

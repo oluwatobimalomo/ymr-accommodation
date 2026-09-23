@@ -20,12 +20,26 @@ export async function getLodgeBySlug(slug: string) {
 }
 
 export async function listActiveCategoriesForLodge(lodgeId: string) {
-  return getDb()
+  const db = getDb();
+  const categoryRows = await db
     .select()
     .from(accommodationCategories)
     .where(eq(accommodationCategories.lodgeId, lodgeId))
     .orderBy(accommodationCategories.name)
     .then((rows) => rows.filter((r) => r.status === "ACTIVE"));
+
+  const categoryIds = categoryRows.map((c) => c.id);
+  const unitRows = categoryIds.length
+    ? (await db.select().from(accommodationUnits)).filter((u) => categoryIds.includes(u.categoryId))
+    : [];
+
+  // Each category maps to (usually) one apartment/unit in the simplified
+  // admin model - use its real photo instead of a generic placeholder
+  // repeated identically across every category card.
+  return categoryRows.map((c) => ({
+    ...c,
+    image: unitRows.find((u) => u.categoryId === c.id)?.images[0],
+  }));
 }
 
 export async function getCategoryForBooking(categoryId: string) {
@@ -66,5 +80,11 @@ export async function getBookingByReference(reference: string) {
   const [booking] = await getDb().select().from(bookings).where(eq(bookings.reference, reference)).limit(1);
   if (!booking) return null;
   const occupants = await getDb().select().from(bookingOccupants).where(eq(bookingOccupants.bookingId, booking.id));
-  return { booking, occupants };
+  const [category] = await getDb()
+    .select()
+    .from(accommodationCategories)
+    .where(eq(accommodationCategories.id, booking.categoryId))
+    .limit(1);
+  const lodge = category ? await getDb().select().from(lodges).where(eq(lodges.id, category.lodgeId)).limit(1) : [];
+  return { booking, occupants, categoryName: category?.name, lodgeName: lodge[0]?.name };
 }

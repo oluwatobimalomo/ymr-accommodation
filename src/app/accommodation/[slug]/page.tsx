@@ -17,13 +17,6 @@ export default async function LodgePage({ params }: { params: Promise<{ slug: st
       <p>
         <Link href="/accommodation">&larr; All accommodation</Link>
       </p>
-      {lodge.images.length > 0 && (
-        <div className="photo-gallery">
-          {lodge.images.slice(0, 3).map((src, i) => (
-            <ImageThumb key={i} src={src} alt={`${lodge.name} photo ${i + 1}`} aspect="16/10" />
-          ))}
-        </div>
-      )}
       <h1>{lodge.name}</h1>
       {lodge.description && <p>{lodge.description}</p>}
       {lodge.address && <p>{lodge.address}</p>}
@@ -35,7 +28,7 @@ export default async function LodgePage({ params }: { params: Promise<{ slug: st
         <div className="grid">
           {categories.map((c) => (
             <Link key={c.id} href={`/booking/${c.id}`} className="listing-card">
-              <ImageThumb src={undefined} alt={c.name} aspect="4/3" />
+              <ImageThumb src={c.image} alt={c.name} aspect="4/3" />
               <div className="listing-body">
                 <h3>{c.name}</h3>
                 <div className="badge-row">
