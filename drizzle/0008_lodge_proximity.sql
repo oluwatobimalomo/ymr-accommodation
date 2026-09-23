@@ -1,0 +1,1 @@
+ALTER TABLE "lodges" ADD COLUMN "proximity_km" numeric(6, 2);
