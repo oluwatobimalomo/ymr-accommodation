@@ -6,8 +6,8 @@ import { useState } from "react";
 import { MAIN_SITE_URL } from "@/theme/tokens";
 
 const LINKS: [string, string][] = [
-  ["/accommodation", "Accommodation"],
-  ["/check-booking", "Check my booking"],
+  ["/", "Accommodation"],
+  ["/check-booking", "Check Booking"],
   ["/support", "Support"],
   [MAIN_SITE_URL, "YMR Global"],
 ];
