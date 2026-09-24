@@ -39,7 +39,6 @@ export default async function LodgeDetailPage({
   const canWrite = can(actor, "inventory.write");
 
   function ApartmentCards({ items }: { items: typeof apartments }) {
-    const bedLabel = (specification: string) => /\bbed\b/i.test(specification) ? specification : `${specification} Bed`;
     return (
       <div className="grid">
         {items.map((a) => (
@@ -52,8 +51,8 @@ export default async function LodgeDetailPage({
                 {a.genderRestriction !== "ANY" && <Badge>{a.genderRestriction === "MALE" ? "Male" : "Female"}</Badge>}
               </div>
               <p className="listing-meta">{a.mode === "PRIVATE" ? (/chalet/i.test(a.name) ? "Chalet" : /single\s*room|room/i.test(a.name) ? "Single Room" : "Private apartment") : "Shared accommodation"}</p>
-              {a.facilities.some((facility) => /air conditioner|air conditioning|\bac\b/i.test(facility)) ? <p className="listing-meta">AC</p> : a.facilities.some((facility) => /fan/i.test(facility)) ? <p className="listing-meta">Fan</p> : null}
-              {a.bedSpecifications.length > 0 && <p className="listing-meta">{a.bedSpecifications.map(bedLabel).join(", ")}</p>}
+              {a.overviewFacilities.length > 0 && <p className="listing-meta"><strong>Some amenities:</strong> {a.overviewFacilities.map((name) => name.replace(/\bac\b/gi, "Air Conditioner")).join(", ")}</p>}
+              {(a.bedTypes.length > 0 || a.bedSizes.length > 0) && <p className="listing-meta"><strong>{a.bedTypes.join(", ")}</strong>{a.bedSizes.length > 0 ? ` · ${a.bedSizes.join(", ")}` : ""}</p>}
               <p className="listing-price">
                 <span className="price-unit">Price</span> <strong>{formatNaira(a.priceMinor)}</strong>
               </p>

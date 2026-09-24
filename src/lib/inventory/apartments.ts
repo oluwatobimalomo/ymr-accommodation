@@ -8,6 +8,7 @@ import {
   lodges,
   rooms,
   unitFacilities,
+  unitOverviewFacilities,
 } from "@/db/schema";
 import { recordAudit } from "@/lib/audit";
 import { authorize, type Actor } from "@/lib/authz/authorize";
@@ -35,6 +36,9 @@ export interface CreateApartmentInput {
   // PRIVATE
   facilityIds?: string[];
   bedSpecifications?: string[];
+  bedTypes?: string[];
+  bedSizes?: string[];
+  overviewFacilityIds?: string[];
   // SHARED
   genderRestriction?: "MALE" | "FEMALE" | "ANY";
   bedspaceCount?: number;
@@ -117,6 +121,8 @@ export async function createApartment(actor: Actor, input: CreateApartmentInput)
         description: input.description ?? "",
         images: input.images ?? [],
         bedSpecifications: [...new Set(input.bedSpecifications ?? [])],
+        bedTypes: [...new Set(input.bedTypes ?? [])],
+        bedSizes: [...new Set(input.bedSizes ?? [])],
       })
       .returning();
     if (!unit) throw new Error("Could not create the apartment.");
@@ -130,6 +136,10 @@ export async function createApartment(actor: Actor, input: CreateApartmentInput)
     const facilityIds = [...new Set([...(input.facilityIds ?? []), ...(bedFacility ? [bedFacility.id] : [])])];
     if (facilityIds.length) {
       await tx.insert(unitFacilities).values(facilityIds.map((facilityId) => ({ unitId: unit.id, facilityId })));
+    }
+    const overviewIds = [...new Set((input.overviewFacilityIds ?? []).filter((id) => facilityIds.includes(id)))];
+    if (overviewIds.length) {
+      await tx.insert(unitOverviewFacilities).values(overviewIds.map((facilityId) => ({ unitId: unit.id, facilityId })));
     }
 
     if (input.mode === "SHARED") {
@@ -181,7 +191,10 @@ export interface ApartmentSummary {
   status: string;
   image?: string;
   bedSpecifications: string[];
+  bedTypes: string[];
+  bedSizes: string[];
   facilities: string[];
+  overviewFacilities: string[];
 }
 
 /** Flat list of every apartment (unit) in a lodge, across all its categories - the admin no longer manages categories separately. */
@@ -200,6 +213,8 @@ export async function listApartmentsForLodge(lodgeId: string): Promise<Apartment
       status: accommodationUnits.status,
       image: sql<string | null>`${accommodationUnits.images}[1]`,
       bedSpecifications: accommodationUnits.bedSpecifications,
+      bedTypes: accommodationUnits.bedTypes,
+      bedSizes: accommodationUnits.bedSizes,
     })
     .from(accommodationUnits)
     .innerJoin(accommodationCategories, eq(accommodationCategories.id, accommodationUnits.categoryId))
@@ -211,7 +226,12 @@ export async function listApartmentsForLodge(lodgeId: string): Promise<Apartment
     : [];
   const facilitiesByUnit = new Map<string, string[]>();
   for (const facility of facilityRows) facilitiesByUnit.set(facility.unitId, [...(facilitiesByUnit.get(facility.unitId) ?? []), facility.name]);
-  return rows.map((r) => ({ ...r, image: r.image ?? undefined, facilities: facilitiesByUnit.get(r.unitId) ?? [] }));
+  const overviewRows = rows.length
+    ? await db.select({ unitId: unitOverviewFacilities.unitId, name: facilities.name }).from(unitOverviewFacilities).innerJoin(facilities, eq(facilities.id, unitOverviewFacilities.facilityId)).where(inArray(unitOverviewFacilities.unitId, rows.map((row) => row.unitId)))
+    : [];
+  const overviewByUnit = new Map<string, string[]>();
+  for (const facility of overviewRows) overviewByUnit.set(facility.unitId, [...(overviewByUnit.get(facility.unitId) ?? []), facility.name]);
+  return rows.map((r) => ({ ...r, image: r.image ?? undefined, facilities: facilitiesByUnit.get(r.unitId) ?? [], overviewFacilities: overviewByUnit.get(r.unitId) ?? [] }));
 }
 
 export interface ApartmentRoomDetail {
@@ -224,6 +244,7 @@ export interface ApartmentDetail {
   category: typeof accommodationCategories.$inferSelect;
   rooms: ApartmentRoomDetail[];
   facilityIds: string[];
+  overviewFacilityIds: string[];
 }
 
 export async function getApartmentDetail(unitId: string): Promise<ApartmentDetail | null> {
@@ -246,8 +267,9 @@ export async function getApartmentDetail(unitId: string): Promise<ApartmentDetai
   const roomDetails: ApartmentRoomDetail[] = roomRows.map((room) => ({ room, bedspaceList: bedspacesByRoom.get(room.id) ?? [] }));
 
   const facilityRows = await db.select({ facilityId: unitFacilities.facilityId }).from(unitFacilities).where(eq(unitFacilities.unitId, unitId));
+  const overviewRows = await db.select({ facilityId: unitOverviewFacilities.facilityId }).from(unitOverviewFacilities).where(eq(unitOverviewFacilities.unitId, unitId));
 
-  return { unit, category, rooms: roomDetails, facilityIds: facilityRows.map((f) => f.facilityId) };
+  return { unit, category, rooms: roomDetails, facilityIds: facilityRows.map((f) => f.facilityId), overviewFacilityIds: overviewRows.map((f) => f.facilityId) };
 }
 
 export interface UpdateApartmentInput {
@@ -258,6 +280,9 @@ export interface UpdateApartmentInput {
   images?: string[];
   facilityIds?: string[]; // PRIVATE only
   bedSpecifications?: string[];
+  bedTypes?: string[];
+  bedSizes?: string[];
+  overviewFacilityIds?: string[];
 }
 
 export async function updateApartment(actor: Actor, unitId: string, input: UpdateApartmentInput) {
@@ -268,13 +293,15 @@ export async function updateApartment(actor: Actor, unitId: string, input: Updat
     const [unit] = await tx.select().from(accommodationUnits).where(eq(accommodationUnits.id, unitId)).limit(1);
     if (!unit) throw new Error("That apartment could not be found.");
 
-    if (input.name !== undefined || input.images !== undefined || input.bedSpecifications !== undefined) {
+    if (input.name !== undefined || input.images !== undefined || input.bedSpecifications !== undefined || input.bedTypes !== undefined || input.bedSizes !== undefined) {
       await tx
         .update(accommodationUnits)
         .set({
           ...(input.name !== undefined ? { name: input.name } : {}),
           ...(input.images !== undefined ? { images: input.images } : {}),
           ...(input.bedSpecifications !== undefined ? { bedSpecifications: [...new Set(input.bedSpecifications)] } : {}),
+          ...(input.bedTypes !== undefined ? { bedTypes: [...new Set(input.bedTypes)] } : {}),
+          ...(input.bedSizes !== undefined ? { bedSizes: [...new Set(input.bedSizes)] } : {}),
           updatedAt: new Date(),
         })
         .where(eq(accommodationUnits.id, unitId));
@@ -311,6 +338,19 @@ export async function updateApartment(actor: Actor, unitId: string, input: Updat
       const facilityIds = [...new Set([...input.facilityIds, ...(bedFacility ? [bedFacility.id] : [])])];
       if (facilityIds.length) {
         await tx.insert(unitFacilities).values(facilityIds.map((facilityId) => ({ unitId, facilityId })));
+      }
+      const allowedOverview = [...new Set((input.overviewFacilityIds ?? []).filter((id) => facilityIds.includes(id)))];
+      await tx.delete(unitOverviewFacilities).where(eq(unitOverviewFacilities.unitId, unitId));
+      if (allowedOverview.length) {
+        await tx.insert(unitOverviewFacilities).values(allowedOverview.map((facilityId) => ({ unitId, facilityId })));
+      }
+    } else if (input.overviewFacilityIds !== undefined) {
+      const selected = await tx.select({ facilityId: unitFacilities.facilityId }).from(unitFacilities).where(eq(unitFacilities.unitId, unitId));
+      const selectedIds = selected.map((item) => item.facilityId);
+      const allowedOverview = [...new Set(input.overviewFacilityIds.filter((id) => selectedIds.includes(id)))];
+      await tx.delete(unitOverviewFacilities).where(eq(unitOverviewFacilities.unitId, unitId));
+      if (allowedOverview.length) {
+        await tx.insert(unitOverviewFacilities).values(allowedOverview.map((facilityId) => ({ unitId, facilityId })));
       }
     }
 

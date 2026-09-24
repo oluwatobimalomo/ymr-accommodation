@@ -30,7 +30,8 @@ export const allocationStatus = pgEnum("allocation_status", [
   "PARTIALLY_ALLOCATED",
   "FULLY_ALLOCATED",
 ]);
-export const occupantGender = pgEnum("occupant_gender", ["MALE", "FEMALE"]);
+export const occupantGender = pgEnum("occupant_gender", ["MALE", "FEMALE", "UNSPECIFIED"]);
+export const keyCustodyStatus = pgEnum("key_custody_status", ["ISSUED", "RETURNED", "MISSING"]);
 
 export const ticketCategory = pgEnum("ticket_category", [
   "PAYMENT",

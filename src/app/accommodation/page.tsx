@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { ImageThumb } from "@/components/ImageThumb";
+import { LodgeImagePreview } from "@/components/LodgeImagePreview";
 import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
 import { listActiveLodges } from "@/lib/booking/queries";
 import { formatNaira } from "@/lib/format-currency";
+import { SavedBagNotice } from "@/components/SavedBagNotice";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Accommodation" };
@@ -28,6 +29,7 @@ export default async function AccommodationPage({ searchParams }: { searchParams
         <h1>Accommodation</h1>
         <p>Browse trusted places to stay for the Young Ministers Retreat.</p>
       </div>
+      <SavedBagNotice />
       {allLodges.length > 0 && (
         <form method="get" className="directory-tools" role="search">
           <div className="directory-search-group"><label className="directory-search"><span className="sr-only">Search accommodations</span><input name="q" type="search" defaultValue={q} placeholder="Search by lodge name or location" /></label><button className="btn secondary" type="submit">Search</button></div>
@@ -41,10 +43,10 @@ export default async function AccommodationPage({ searchParams }: { searchParams
       ) : lodges.length === 0 ? (
         <p>No lodges match “{q}”. Try another name or location.</p>
       ) : (
-        <div className="grid">
+        <div className="grid accommodation-listing-grid">
           {lodges.map((lodge) => (
             <Link key={lodge.id} href={`/accommodation/${lodge.slug}`} className="listing-card">
-              <ImageThumb src={lodge.mainImage} alt={lodge.name} aspect="4/3" />
+              <LodgeImagePreview images={lodge.images} fallback={lodge.mainImage} alt={lodge.name} />
               <div className="listing-body">
                 <h3>{lodge.name}</h3>
                 <p className="listing-meta">{lodge.description || lodge.address || "See available rooms"}</p>

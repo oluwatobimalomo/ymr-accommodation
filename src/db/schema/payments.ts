@@ -1,5 +1,6 @@
 import { bigint, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { bookings } from "./booking";
+import { bookingOrders } from "./booking-orders";
 import { transactionStatus } from "./enums";
 import { sql } from "drizzle-orm";
 
@@ -15,6 +16,7 @@ export const paymentTransactions = pgTable("payment_transactions", {
   bookingId: uuid("booking_id")
     .notNull()
     .references(() => bookings.id, { onDelete: "restrict" }),
+  checkoutOrderId: uuid("checkout_order_id").references(() => bookingOrders.id, { onDelete: "restrict" }),
   reference: text("reference").notNull(),
   paystackTransactionId: bigint("paystack_transaction_id", { mode: "number" }),
   amountMinor: integer("amount_minor").notNull(),

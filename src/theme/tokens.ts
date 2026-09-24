@@ -36,7 +36,7 @@ export const theme = {
   },
   font: {
     display: '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif',
-    body: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
+    body: '"Avenir Next", Avenir, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
   },
   radius: { sm: "6px", md: "12px", lg: "20px", pill: "999px" },
   space: { 1: "4px", 2: "8px", 3: "12px", 4: "16px", 5: "24px", 6: "32px", 7: "48px", 8: "72px" },

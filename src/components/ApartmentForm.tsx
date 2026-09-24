@@ -17,10 +17,14 @@ interface Props {
   defaultCheckOutDate?: string | null;
 }
 
-const BED_SPECIFICATIONS = ["6x6", "4x6", "Single Bed", "Double Bed", "Bunk Bed"];
+const BED_TYPES = ["Single Bed", "Double Bed", "Bunk"];
+const BED_SIZES = ["4x6", "6x6", "3x6", "5x6"];
 
 export function ApartmentForm({ lodgeId, facilities, action, defaultCheckInDate, defaultCheckOutDate }: Props) {
   const [mode, setMode] = useState<"PRIVATE" | "SHARED">("PRIVATE");
+  const [selectedFacilities, setSelectedFacilities] = useState<string[]>([]);
+  const [overviewFacilities, setOverviewFacilities] = useState<string[]>([]);
+  const amenityOptions = facilities.filter((f) => !["air conditioning", "bed"].includes(f.name.trim().toLowerCase()));
 
   return (
     <form method="post" action={action} encType="multipart/form-data" className="stack apartment-form">
@@ -80,26 +84,37 @@ export function ApartmentForm({ lodgeId, facilities, action, defaultCheckInDate,
 
       {facilities.length > 0 && (
         <fieldset className="checkbox-field">
-          <legend>Facilities</legend>
-          <div className="checkbox-grid">
-            {facilities.filter((f) => !["air conditioning", "bed"].includes(f.name.trim().toLowerCase())).map((f) => (
-              <label className="checkbox-option" key={f.id}>
-                <input type="checkbox" name="facilityIds" value={f.id} />
-                <span>{f.name}</span>
-              </label>
-            ))}
+          <legend>Amenities</legend>
+          <div className="stack amenity-create-list">
+            {amenityOptions.map((f) => <div className="amenity-admin-row" key={f.id}>
+              <label className="checkbox-option"><input type="checkbox" name="facilityIds" value={f.id} checked={selectedFacilities.includes(f.id)} onChange={(event) => { setSelectedFacilities((current) => event.target.checked ? [...current, f.id] : current.filter((id) => id !== f.id)); if (!event.target.checked) setOverviewFacilities((current) => current.filter((id) => id !== f.id)); }} /><span>{f.name}</span></label>
+              <label className="checkbox-option"><input type="checkbox" name="overviewFacilityIds" value={f.id} checked={overviewFacilities.includes(f.id)} disabled={!selectedFacilities.includes(f.id)} onChange={(event) => { if (event.target.checked) { setOverviewFacilities((current) => [...current, f.id]); setSelectedFacilities((current) => current.includes(f.id) ? current : [...current, f.id]); } else setOverviewFacilities((current) => current.filter((id) => id !== f.id)); }} /><span>Show in overview</span></label>
+            </div>)}
           </div>
+          <p className="listing-meta">Select an amenity first, then choose whether it appears in the overview.</p>
         </fieldset>
       )}
 
       <fieldset className="checkbox-field">
-        <legend>Bed specifications</legend>
-        <p className="listing-meta">Choose every bed type or size available in this apartment.</p>
+        <legend>Bed type</legend>
+        <p className="listing-meta">Choose the bed categories available in this apartment.</p>
         <div className="checkbox-grid">
-          {BED_SPECIFICATIONS.map((specification) => (
-            <label className="checkbox-option" key={specification}>
-              <input type="checkbox" name="bedSpecifications" value={specification} />
-              <span>{specification}</span>
+          {BED_TYPES.map((bedType) => (
+            <label className="checkbox-option" key={bedType}>
+              <input type="checkbox" name="bedTypes" value={bedType} />
+              <span>{bedType}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <fieldset className="checkbox-field">
+        <legend>Bed size</legend>
+        <div className="checkbox-grid">
+          {BED_SIZES.map((bedSize) => (
+            <label className="checkbox-option" key={bedSize}>
+              <input type="checkbox" name="bedSizes" value={bedSize} />
+              <span>{bedSize}</span>
             </label>
           ))}
         </div>

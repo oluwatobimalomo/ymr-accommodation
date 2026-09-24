@@ -20,12 +20,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     if (intent === "facilities") {
-      await updateApartment(actor, id, { facilityIds: form.getAll("facilityIds").map(String) });
+      await updateApartment(actor, id, {
+        facilityIds: form.getAll("facilityIds").map(String),
+        overviewFacilityIds: form.getAll("overviewFacilityIds").map(String),
+      });
       return;
     }
 
-    if (intent === "bed-specifications") {
-      await updateApartment(actor, id, { bedSpecifications: form.getAll("bedSpecifications").map(String) });
+    if (intent === "beds") {
+      await updateApartment(actor, id, {
+        bedTypes: form.getAll("bedTypes").map(String),
+        bedSizes: form.getAll("bedSizes").map(String),
+      });
       return;
     }
 
@@ -52,7 +58,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       priceNaira: Number(form.get("priceNaira") ?? 0),
       checkInDate: String(form.get("checkInDate") ?? ""),
       checkOutDate: String(form.get("checkOutDate") ?? ""),
-      bedSpecifications: form.getAll("bedSpecifications").map(String),
     });
   });
 }

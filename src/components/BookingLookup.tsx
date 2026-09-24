@@ -2,9 +2,11 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { formatNaira } from "@/lib/format-currency";
+import { TicketDownloadActions } from "@/components/TicketDownloadActions";
 
 interface Ticket {
   ticketId: string;
+  isGift: boolean;
   guestName: string;
   lodgeName: string;
   apartmentName: string;
@@ -13,6 +15,13 @@ interface Ticket {
   accommodationStatus: string;
   createdAt: string;
   occupants: string[];
+  coordinatorName: string;
+  coordinatorPhone: string;
+  checkInDate: string | null;
+  checkOutDate: string | null;
+  bookerEmail: string;
+  bookerPhone: string;
+  items: NonNullable<import("@/components/TicketDownloadActions").TicketDownloadData["items"]>;
 }
 
 const paymentText: Record<string, string> = { PENDING: "Payment pending", PAID: "Paid", FAILED: "Payment failed", REFUNDED: "Refunded", CANCELLED: "Cancelled" };
@@ -32,13 +41,17 @@ function BookingTicket({ ticket, onClose }: { ticket: Ticket; onClose: () => voi
         <div className="ticket-details">
           <div><span>Property</span><strong>{ticket.lodgeName}</strong></div>
           {ticket.apartmentName && <div><span>Apartment</span><strong>{ticket.apartmentName}</strong></div>}
-          <div><span>Guest</span><strong>{ticket.guestName}</strong></div>
+          {ticket.isGift && <div><span>Recipient</span><strong>{ticket.occupants.join(", ") || ticket.guestName}</strong></div>}
           <div><span>Stay status</span><strong>{stayText[ticket.accommodationStatus] ?? ticket.accommodationStatus}</strong></div>
+          {ticket.checkInDate && <div><span>Check-in</span><strong>{new Intl.DateTimeFormat("en-NG", { dateStyle: "long" }).format(new Date(`${ticket.checkInDate}T12:00:00`))}</strong></div>}
+          {ticket.checkOutDate && <div><span>Check-out</span><strong>{new Intl.DateTimeFormat("en-NG", { dateStyle: "long" }).format(new Date(`${ticket.checkOutDate}T12:00:00`))}</strong></div>}
           <div><span>Booking date</span><strong>{new Intl.DateTimeFormat("en-NG", { dateStyle: "medium" }).format(new Date(ticket.createdAt))}</strong></div>
           <div><span>Amount</span><strong>{formatNaira(ticket.amountMinor)}</strong></div>
         </div>
-        <div className="ticket-occupants"><span>Guests on this booking</span><ul>{ticket.occupants.map((name, index) => <li key={`${name}-${index}`}>{name}</li>)}</ul></div>
-        <div className="ticket-footer"><span>Keep this ticket handy when you arrive.</span><button className="btn ticket-screen-only" type="button" onClick={() => window.print()}>Download Ticket</button></div>
+        {ticket.isGift && <div className="ticket-occupants"><span>Recipient details</span><ul>{ticket.occupants.map((name, index) => <li key={`${name}-${index}`}>{name}</li>)}</ul></div>}
+        <div className="ticket-booker-details"><span className="ticket-label">Booked by</span><strong>{ticket.guestName}</strong><span>{ticket.bookerEmail}</span><span>{ticket.bookerPhone}</span></div>
+        {ticket.items.length > 1 ? <section className="ticket-order-items"><h3>Booking details by lodge</h3>{ticket.items.map((item) => <article className="ticket-order-item" key={item.reference}><span className="ticket-label">Item {item.sequence}</span><h3>{item.apartmentName}</h3><p><strong>{item.lodgeName}</strong> · {item.checkInDate || "Check-in to be confirmed"} – {item.checkOutDate || "Check-out to be confirmed"}</p><ul>{item.occupants.map((guest, index) => <li key={`${guest.name}-${index}`}>{guest.name}{guest.allocation ? ` · ${guest.allocation}` : ""}</li>)}</ul><strong>{formatNaira(item.amountMinor)}</strong><div className="ticket-coordinator"><span className="ticket-label">Lodge Coordinator:</span><strong>{item.coordinatorName || "Contact support"}</strong><span>|</span>{item.coordinatorPhone ? <a href={`tel:${item.coordinatorPhone}`}>{item.coordinatorPhone}</a> : <a href="/support">Support</a>}</div></article>)}</section> : <div className="ticket-coordinator"><span className="ticket-label">Lodge Coordinator:</span><strong>{ticket.coordinatorName || "Contact support"}</strong><span>|</span>{ticket.coordinatorPhone ? <a href={`tel:${ticket.coordinatorPhone}`}>{ticket.coordinatorPhone}</a> : <a href="/support">Support</a>}</div>}
+        <div className="ticket-footer"><span>Keep this ticket handy when you arrive.</span><TicketDownloadActions ticket={{ ticketId: ticket.ticketId, guestName: ticket.guestName, bookerEmail: ticket.bookerEmail, bookerPhone: ticket.bookerPhone, lodgeName: ticket.lodgeName, apartmentName: ticket.apartmentName, amountMinor: ticket.amountMinor, paymentStatus: ticket.paymentStatus, accommodationStatus: ticket.accommodationStatus, occupants: ticket.occupants, isGift: ticket.isGift, checkInDate: ticket.checkInDate ?? undefined, checkOutDate: ticket.checkOutDate ?? undefined, coordinatorName: ticket.coordinatorName, coordinatorPhone: ticket.coordinatorPhone, items: ticket.items }} /></div>
       </section>
     </div>
   );

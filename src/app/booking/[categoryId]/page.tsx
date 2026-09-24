@@ -41,6 +41,8 @@ export default async function BookingPage({
       <BookingForm
         categoryId={category.id}
         mode={category.mode}
+        pricingModel={category.pricingModel}
+        priceMinor={category.defaultPriceMinor}
         customerSelectsBedspace={category.customerSelectsBedspace}
         customerSelectsRoom={category.customerSelectsRoom}
         allowEntireRoomBooking={category.allowEntireRoomBooking}

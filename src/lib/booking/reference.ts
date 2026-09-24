@@ -1,7 +1,7 @@
 import { randomInt } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import type { DbOrTx } from "@/db/client";
-import { bookings, events } from "@/db/schema";
+import { bookingOrders, bookings, events } from "@/db/schema";
 
 function lodgeCode(name: string): string {
   const words = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().match(/[A-Z]+/g) ?? [];
@@ -34,7 +34,8 @@ export async function nextBookingReference(tx: DbOrTx, eventId: string, lodgeNam
   for (let attempt = 0; attempt < 20; attempt++) {
     const candidate = `${eventCode}-${propertyCode}-${randomReferenceCode()}`;
     const [existing] = await tx.select({ id: bookings.id }).from(bookings).where(eq(bookings.reference, candidate)).limit(1);
-    if (!existing) return candidate;
+    const [existingOrder] = await tx.select({ id: bookingOrders.id }).from(bookingOrders).where(eq(bookingOrders.reference, candidate)).limit(1);
+    if (!existing && !existingOrder) return candidate;
   }
   throw new Error("Could not generate a unique booking reference. Please try again.");
 }

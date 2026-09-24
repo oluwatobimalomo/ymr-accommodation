@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { getDb } from "@/db/client";
-import { bookings, inventoryHolds, paymentTransactions, supportTicketMessages, supportTickets } from "@/db/schema";
+import { bookingOrders, bookings, inventoryHolds, paymentTransactions, privateUnitAllocations, supportTicketMessages, supportTickets } from "@/db/schema";
 import { recordAudit } from "@/lib/audit";
 import type { VerifyTransactionResult } from "./paystack";
 
@@ -66,6 +66,9 @@ export async function confirmPaymentFromVerifiedResult(verified: VerifyTransacti
 
   const db = getDb();
   return db.transaction(async (tx) => {
+    const [order] = await tx.select().from(bookingOrders).where(eq(bookingOrders.reference, verified.reference)).for("update").limit(1);
+    if (order) return confirmOrderPayment(tx, order, verified);
+
     // Callback and webhook confirmation serialize on this one booking row.
     // The second process sees the committed state after it obtains the lock.
     const [booking] = await tx
@@ -195,4 +198,67 @@ export async function confirmPaymentFromVerifiedResult(verified: VerifyTransacti
     });
     return { status: "confirmed" };
   });
+}
+
+async function confirmOrderPayment(
+  tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0],
+  order: typeof bookingOrders.$inferSelect,
+  verified: VerifyTransactionResult,
+): Promise<ConfirmPaymentOutcome> {
+  const orderBookings = await tx.select().from(bookings).where(eq(bookings.checkoutOrderId, order.id)).orderBy(bookings.createdAt);
+  const primary = orderBookings[0];
+  if (!primary) return { status: "booking_not_found" };
+
+  const [existingTransaction] = await tx.select().from(paymentTransactions)
+    .where(eq(paymentTransactions.paystackTransactionId, verified.paystackTransactionId)).limit(1);
+  if (existingTransaction) {
+    if (existingTransaction.checkoutOrderId !== order.id) throw new Error("Paystack transaction is already associated with a different checkout.");
+    return { status: existingTransaction.status === "AMOUNT_MISMATCH" ? "amount_mismatch" : "already_confirmed" };
+  }
+  if (order.paymentStatus === "PAID") return { status: "already_confirmed" };
+
+  if (verified.requestedAmountMinor !== order.amountMinor || verified.currency !== order.currency) {
+    await tx.insert(paymentTransactions).values({
+      bookingId: primary.id, checkoutOrderId: order.id, reference: verified.reference,
+      paystackTransactionId: verified.paystackTransactionId, amountMinor: verified.amountMinor,
+      currency: verified.currency, status: "AMOUNT_MISMATCH", gatewayResponse: verified.gatewayResponse, rawPayload: verified.raw,
+    });
+    await createTicketInTx(tx, {
+      bookingId: primary.id, customerName: order.bookerName, customerEmail: order.bookerEmail, customerPhone: order.bookerPhone,
+      category: "PAYMENT", subject: `Amount mismatch on checkout ${order.reference}`,
+      description: `Paystack reported ${verified.amountMinor} ${verified.currency}, but checkout expects ${order.amountMinor} ${order.currency}. This needs manual review before confirming payment.`,
+    });
+    await recordAudit(tx, { actor: null, action: "payment.amount_mismatch", entityType: "booking_order", entityId: order.id,
+      before: { paymentStatus: order.paymentStatus }, after: { outcome: "amount_mismatch", expected: order.amountMinor, received: verified.amountMinor, currency: verified.currency } });
+    return { status: "amount_mismatch" };
+  }
+
+  const expired = orderBookings.some((booking) => booking.paymentStatus === "CANCELLED");
+  await tx.insert(paymentTransactions).values({
+    bookingId: primary.id, checkoutOrderId: order.id, reference: verified.reference,
+    paystackTransactionId: verified.paystackTransactionId, amountMinor: verified.amountMinor,
+    currency: verified.currency, status: "SUCCESS", gatewayResponse: verified.gatewayResponse,
+    paidAt: verified.paidAt ? new Date(verified.paidAt) : new Date(), rawPayload: verified.raw,
+  });
+
+  if (expired) {
+    await tx.update(bookingOrders).set({ paymentStatus: "PAID", updatedAt: new Date() }).where(eq(bookingOrders.id, order.id));
+    await tx.update(bookings).set({ paymentStatus: "PAID", allocationStatus: "NOT_ALLOCATED", updatedAt: new Date() }).where(eq(bookings.checkoutOrderId, order.id));
+    await tx.delete(inventoryHolds).where(inArray(inventoryHolds.bookingId, orderBookings.map((booking) => booking.id)));
+    await tx.update(privateUnitAllocations).set({ releasedAt: new Date(), releaseReason: "checkout payment received after hold expiry" })
+      .where(and(inArray(privateUnitAllocations.bookingId, orderBookings.map((booking) => booking.id)), isNull(privateUnitAllocations.releasedAt)));
+    await createTicketInTx(tx, {
+      bookingId: primary.id, customerName: order.bookerName, customerEmail: order.bookerEmail, customerPhone: order.bookerPhone,
+      category: "ALLOCATION", subject: `Payment received after a reservation expired: ${order.reference}`,
+      description: "Payment succeeded after one or more temporary inventory holds expired. Please review every accommodation in this checkout, manually reallocate unavailable inventory, or process a refund.",
+    });
+    return { status: "needs_manual_review" };
+  }
+
+  await tx.update(bookingOrders).set({ paymentStatus: "PAID", updatedAt: new Date() }).where(eq(bookingOrders.id, order.id));
+  await tx.update(bookings).set({ paymentStatus: "PAID", accommodationStatus: "ALLOCATED", allocationStatus: "FULLY_ALLOCATED", updatedAt: new Date() }).where(eq(bookings.checkoutOrderId, order.id));
+  await tx.delete(inventoryHolds).where(inArray(inventoryHolds.bookingId, orderBookings.map((booking) => booking.id)));
+  await recordAudit(tx, { actor: null, action: "payment.confirmed", entityType: "booking_order", entityId: order.id,
+    before: { paymentStatus: order.paymentStatus }, after: { paymentStatus: "PAID", reference: verified.reference, bookingCount: orderBookings.length } });
+  return { status: "confirmed" };
 }

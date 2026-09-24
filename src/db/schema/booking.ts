@@ -2,6 +2,7 @@ import { char, integer, pgTable, text, timestamp, uniqueIndex, uuid, index } fro
 import { sql } from "drizzle-orm";
 import { accommodationCategories, accommodationUnits, bedspaces, rooms } from "./inventory";
 import { events } from "./events";
+import { bookingOrders } from "./booking-orders";
 import { accommodationStatus, allocationStatus, occupantGender, paymentStatus } from "./enums";
 
 /**
@@ -33,6 +34,7 @@ export const bookings = pgTable("bookings", {
   eventId: uuid("event_id")
     .notNull()
     .references(() => events.id, { onDelete: "restrict" }),
+  checkoutOrderId: uuid("checkout_order_id").references(() => bookingOrders.id, { onDelete: "restrict" }),
   reference: text("reference").notNull().unique(),
   categoryId: uuid("category_id")
     .notNull()

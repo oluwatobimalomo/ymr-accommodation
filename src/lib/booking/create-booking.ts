@@ -6,6 +6,7 @@ import {
   bedspaces,
   bookingOccupants,
   bookings,
+  bookingOrders,
   events,
   inventoryHolds,
   lodges,
@@ -19,7 +20,7 @@ export interface OccupantInput {
   name: string;
   phone?: string;
   email?: string;
-  gender: "MALE" | "FEMALE";
+  gender: "MALE" | "FEMALE" | "UNSPECIFIED";
   /** Required when the category lets the customer pick the exact bedspace. */
   bedspaceId?: string;
 }
@@ -43,6 +44,21 @@ export interface CreateBookingResult {
   currency: string;
 }
 
+export interface CreateBookingOrderInput {
+  bookerName: string;
+  bookerPhone: string;
+  bookerEmail: string;
+  giftRecipient?: { name: string; phone: string; email: string };
+  items: Array<Omit<CreateBookingInput, "bookerName" | "bookerPhone" | "bookerEmail">>;
+}
+
+export interface CreateBookingOrderResult {
+  reference: string;
+  amountMinor: number;
+  currency: string;
+  bookings: CreateBookingResult[];
+}
+
 type Assignment = { bedspaceId?: string; unitId?: string };
 
 function assertNonEmptyName(value: string, field: string) {
@@ -61,20 +77,87 @@ function assertNonEmptyName(value: string, field: string) {
  * it (holdRoom exists), this orchestration function just doesn't call it yet.
  */
 export async function createBooking(input: CreateBookingInput): Promise<CreateBookingResult> {
+  const db = getDb();
+  return db.transaction(async (tx) => createBookingInTransaction(tx, input));
+}
+
+export async function createBookingOrder(input: CreateBookingOrderInput): Promise<CreateBookingOrderResult> {
   assertNonEmptyName(input.bookerName, "Booker name");
   assertNonEmptyName(input.bookerPhone, "Phone number");
   assertNonEmptyName(input.bookerEmail, "Email");
-  if (input.occupants.length === 0) throw new Error("At least one occupant is required.");
-  for (const o of input.occupants) assertNonEmptyName(o.name, "Each occupant's name");
+  if (input.items.length === 0) throw new Error("Add at least one apartment to your bag.");
+  if (input.items.length > 12) throw new Error("A single checkout can contain up to 12 apartments.");
+  for (const item of input.items) {
+    if (item.occupants.length === 0) throw new Error("Add at least one guest to each apartment.");
+    for (const occupant of item.occupants) assertNonEmptyName(occupant.name, "Each guest's name");
+  }
 
-  const db = getDb();
-  return db.transaction(async (tx) => {
+  return getDb().transaction(async (tx) => {
+    const details = [] as Array<{ category: typeof accommodationCategories.$inferSelect; lodge: typeof lodges.$inferSelect; event: typeof events.$inferSelect; item: CreateBookingOrderInput["items"][number] }>;
+    for (const item of input.items) {
+      const [category] = await tx.select().from(accommodationCategories).where(eq(accommodationCategories.id, item.categoryId)).limit(1);
+      if (!category || category.status !== "ACTIVE") throw new Error("One of the apartments in your bag is no longer available.");
+      const [lodge] = await tx.select().from(lodges).where(eq(lodges.id, category.lodgeId)).limit(1);
+      if (!lodge || lodge.status !== "ACTIVE") throw new Error("One of the lodges in your bag is no longer available.");
+      const [event] = await tx.select().from(events).where(eq(events.id, lodge.eventId)).limit(1);
+      if (!event || event.status !== "OPEN") throw new Error("Booking is not currently open for one of the selected lodges.");
+      details.push({ category, lodge, event, item });
+    }
+    const first = details[0]!;
+    if (details.some((detail) => detail.event.id !== first.event.id || detail.event.currency !== first.event.currency)) {
+      throw new Error("All apartments in one checkout must belong to the same event and currency.");
+    }
+    const amountMinor = details.reduce((total, { category, item }) => total + (
+      category.pricingModel === "PER_PERSON" ? category.defaultPriceMinor * item.occupants.length : category.defaultPriceMinor
+    ), 0);
+    const reference = await nextBookingReference(tx, first.event.id, first.lodge.name);
+    const [order] = await tx.insert(bookingOrders).values({
+      eventId: first.event.id,
+      reference,
+      bookerName: input.bookerName,
+      bookerPhone: input.bookerPhone,
+      bookerEmail: input.bookerEmail,
+      giftRecipientName: input.giftRecipient?.name ?? null,
+      giftRecipientPhone: input.giftRecipient?.phone ?? null,
+      giftRecipientEmail: input.giftRecipient?.email ?? null,
+      amountMinor,
+      currency: first.event.currency,
+    }).returning();
+    if (!order) throw new Error("Could not create checkout.");
+
+    const created: CreateBookingResult[] = [];
+    for (const [index, { item }] of details.entries()) {
+      created.push(await createBookingInTransaction(tx, {
+        ...item,
+        bookerName: input.bookerName,
+        bookerPhone: input.bookerPhone,
+        bookerEmail: input.bookerEmail,
+      }, order.id, index === 0 ? reference : undefined));
+    }
+    return { reference, amountMinor, currency: first.event.currency, bookings: created };
+  });
+}
+
+async function createBookingInTransaction(
+  tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0],
+  input: CreateBookingInput,
+  checkoutOrderId?: string,
+  referenceOverride?: string,
+): Promise<CreateBookingResult> {
+    assertNonEmptyName(input.bookerName, "Booker name");
+    assertNonEmptyName(input.bookerPhone, "Phone number");
+    assertNonEmptyName(input.bookerEmail, "Email");
+    if (input.occupants.length === 0) throw new Error("At least one occupant is required.");
+    for (const o of input.occupants) assertNonEmptyName(o.name, "Each occupant's name");
     const [category] = await tx
       .select()
       .from(accommodationCategories)
       .where(eq(accommodationCategories.id, input.categoryId))
       .limit(1);
     if (!category || category.status !== "ACTIVE") throw new Error("That accommodation category is not available.");
+    if (category.mode === "SHARED" && input.occupants.some((occupant) => occupant.gender === "UNSPECIFIED")) {
+      throw new Error("Choose your gender for the shared bedspace so we can confirm it matches the room.");
+    }
 
     const [lodge] = await tx.select().from(lodges).where(eq(lodges.id, category.lodgeId)).limit(1);
     if (!lodge || lodge.status !== "ACTIVE") throw new Error("That lodge is not currently available.");
@@ -88,12 +171,26 @@ export async function createBooking(input: CreateBookingInput): Promise<CreateBo
       category.pricingModel === "PER_PERSON" ? category.defaultPriceMinor * occupantCount : category.defaultPriceMinor;
 
     const assignments = await resolveAssignments(tx, category, input, occupantCount, event.holdMinutes);
-    const reference = await nextBookingReference(tx, event.id, lodge.name);
+    if (category.mode === "SHARED") {
+      const assignedBedspaceIds = assignments.map((assignment) => assignment.bedspaceId).filter((id): id is string => !!id);
+      const assignedRooms = assignedBedspaceIds.length ? await tx.select({ bedspaceId: bedspaces.id, roomName: rooms.name, genderRestriction: rooms.genderRestriction })
+        .from(bedspaces).innerJoin(rooms, eq(rooms.id, bedspaces.roomId)).where(inArray(bedspaces.id, assignedBedspaceIds)) : [];
+      const roomByBedspace = new Map(assignedRooms.map((room) => [room.bedspaceId, room]));
+      for (const [index, occupant] of input.occupants.entries()) {
+        const room = assignments[index]?.bedspaceId ? roomByBedspace.get(assignments[index]!.bedspaceId!) : undefined;
+        if (!room) throw new Error("We could not confirm the assigned bedspace. Please choose another space.");
+        if (room.genderRestriction !== "ANY" && room.genderRestriction !== occupant.gender) {
+          throw new Error(`This bedspace is in ${room.roomName} (${room.genderRestriction === "MALE" ? "Male" : "Female"}-only). Choose the matching gender or another space.`);
+        }
+      }
+    }
+    const reference = referenceOverride ?? await nextBookingReference(tx, event.id, lodge.name);
 
     const [booking] = await tx
       .insert(bookings)
       .values({
         eventId: event.id,
+        checkoutOrderId: checkoutOrderId ?? null,
         reference,
         categoryId: category.id,
         bookerName: input.bookerName,
@@ -150,7 +247,6 @@ export async function createBooking(input: CreateBookingInput): Promise<CreateBo
     }
 
     return { reference, bookingId: booking.id, amountMinor, currency: event.currency };
-  });
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -214,9 +310,10 @@ async function resolveAssignments(
     const unitIds = units.map((u) => u.id);
     const candidateRooms = unitIds.length ? await tx.select().from(rooms).where(inArray(rooms.unitId, unitIds)) : [];
     const roomIds = candidateRooms.filter((r) => r.status === "ACTIVE").map((r) => r.id);
-    const holdIds = await autoHoldBedspaces(tx, roomIds, occupantCount, holdMinutes);
+    const holdIds = await autoHoldBedspaces(tx, roomIds, occupantCount, holdMinutes, input.occupants.map((occupant) => occupant.gender));
     const heldRows = await tx.select().from(inventoryHolds).where(inArray(inventoryHolds.id, holdIds));
-    return heldRows.map((h) => ({ bedspaceId: h.bedspaceId! }));
+    const holdById = new Map(heldRows.map((hold) => [hold.id, hold]));
+    return holdIds.map((id) => ({ bedspaceId: holdById.get(id)!.bedspaceId! }));
   }
 
   // PRIVATE, whole-unit only (see the scope note on createBooking).

@@ -22,14 +22,23 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ticketId: result.booking.reference,
+      isGift: result.isGift,
       guestName: result.booking.bookerName,
       lodgeName: result.lodgeName ?? "Accommodation",
+      coordinatorName: result.coordinatorName,
+      coordinatorPhone: result.coordinatorPhone,
       apartmentName: result.categoryName ?? "",
       amountMinor: result.booking.amountMinor,
       paymentStatus: result.booking.paymentStatus,
       accommodationStatus: result.booking.accommodationStatus,
       createdAt: result.booking.createdAt.toISOString(),
+      checkInDate: result.checkInDate,
+      checkOutDate: result.checkOutDate,
       occupants: result.occupants.map((occupant) => occupant.name),
+      bookerEmail: result.bookerEmail ?? result.booking.bookerEmail,
+      bookerPhone: result.booking.bookerPhone,
+      items: result.items,
+      giftRecipient: result.giftRecipient,
     }, { headers: { "Cache-Control": "no-store, private" } });
   } catch {
     return NextResponse.json({ error: "We couldn’t check that booking right now. Please try again." }, { status: 400, headers: { "Cache-Control": "no-store" } });

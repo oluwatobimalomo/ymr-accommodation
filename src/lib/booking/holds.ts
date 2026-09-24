@@ -148,6 +148,7 @@ export async function autoHoldBedspaces(
   roomIds: string[],
   count: number,
   holdMinutes: number,
+  genders?: Array<"MALE" | "FEMALE" | "UNSPECIFIED">,
 ): Promise<string[]> {
   if (roomIds.length === 0) return [];
   await sweepExpiredHolds(tx);
@@ -166,11 +167,20 @@ export async function autoHoldBedspaces(
     .for("update", { skipLocked: true });
 
   const free = candidates.filter((b) => !heldIds.has(b.id));
-  if (free.length < count) {
-    throw new InventoryUnavailableError("Not enough space left in this category for the number of people requested.");
+  const roomRows = await tx.select({ id: rooms.id, genderRestriction: rooms.genderRestriction }).from(rooms).where(inArray(rooms.id, roomIds));
+  const roomGender = new Map(roomRows.map((room) => [room.id, room.genderRestriction]));
+  const chosen: typeof free = [];
+  for (let i = 0; i < count; i++) {
+    const gender = genders?.[i];
+    const index = free.findIndex((bedspace) => {
+      const restriction = roomGender.get(bedspace.roomId) ?? "ANY";
+      return !gender || restriction === "ANY" || restriction === gender;
+    });
+    if (index < 0) {
+      throw new InventoryUnavailableError(genders?.length ? "There are no available bedspaces that match the selected guest gender." : "Not enough space left in this category for the number of people requested.");
+    }
+    chosen.push(free.splice(index, 1)[0]!);
   }
-
-  const chosen = free.slice(0, count);
   const holdIds: string[] = [];
   for (const bedspace of chosen) {
     try {

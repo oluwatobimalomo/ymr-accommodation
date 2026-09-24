@@ -29,10 +29,12 @@ async function resizePhoto(file: File): Promise<File> {
 export function ImageUploadInput({ id, name = "images", multiple = true }: { id: string; name?: string; multiple?: boolean }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [processing, setProcessing] = useState(false);
+  const [selectedCount, setSelectedCount] = useState(0);
 
   async function prepareFiles() {
     const input = inputRef.current;
     if (!input?.files?.length) return;
+    setSelectedCount(input.files.length);
     setProcessing(true);
     input.setCustomValidity("Photos are being optimized. Please wait a moment.");
     try {
@@ -51,7 +53,7 @@ export function ImageUploadInput({ id, name = "images", multiple = true }: { id:
   return (
     <span className="image-upload-control">
       <input ref={inputRef} id={id} name={name} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple={multiple} onChange={() => void prepareFiles()} />
-      <small aria-live="polite">{processing ? "Optimizing photos…" : "Photos are resized on your device for faster loading."}</small>
+      <small aria-live="polite">{processing ? `Optimizing ${selectedCount} ${selectedCount === 1 ? "photo" : "photos"}…` : `${selectedCount ? `${selectedCount} ${selectedCount === 1 ? "photo" : "photos"} selected. ` : multiple ? "Select multiple photos at once. " : "Select a photo. "}Photos are resized on your device for faster loading.`}</small>
     </span>
   );
 }

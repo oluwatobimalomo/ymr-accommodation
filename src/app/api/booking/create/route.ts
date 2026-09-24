@@ -20,7 +20,7 @@ export async function POST(request: Request) {
   for (let i = 0; i < occupantCount; i++) {
     const name = String(form.get(`occupant_name_${i}`) ?? "");
     const gender = String(form.get(`occupant_gender_${i}`) ?? "");
-    if (!name || (gender !== "MALE" && gender !== "FEMALE")) {
+    if (!name || (gender !== "MALE" && gender !== "FEMALE" && gender !== "UNSPECIFIED")) {
       return NextResponse.redirect(
         new URL(`${backTo}?error=${encodeURIComponent("Please fill in every occupant's name and gender.")}`, request.url),
         303,
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     }
     occupants.push({
       name,
-      gender,
+      gender: gender as OccupantInput["gender"],
       phone: String(form.get(`occupant_phone_${i}`) ?? ""),
       email: String(form.get(`occupant_email_${i}`) ?? ""),
       bedspaceId: (form.get(`occupant_bedspace_${i}`) as string) || undefined,

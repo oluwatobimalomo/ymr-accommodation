@@ -113,6 +113,34 @@
       "when": 1790205000000,
       "tag": "0015_apartment_stay_dates",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790206000000,
+      "tag": "0016_apartment_beds_and_overview_amenities",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790207000000,
+      "tag": "0017_booking_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790208000000,
+      "tag": "0018_checkout_gifts_and_unspecified_gender",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790209000000,
+      "tag": "0019_checkin_key_custody",
+      "breakpoints": true
     }
   ]
 }

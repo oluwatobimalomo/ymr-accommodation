@@ -93,6 +93,8 @@ export const accommodationUnits = pgTable("accommodation_units", {
   capacity: integer("capacity").notNull().default(0),
   images: text("images").array().notNull().default([]),
   bedSpecifications: text("bed_specifications").array().notNull().default([]),
+  bedTypes: text("bed_types").array().notNull().default([]),
+  bedSizes: text("bed_sizes").array().notNull().default([]),
   status: unitStatus("status").notNull().default("ACTIVE"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -152,6 +154,16 @@ export const unitFacilities = pgTable(
     facilityId: uuid("facility_id")
       .notNull()
       .references(() => facilities.id, { onDelete: "restrict" }),
+  },
+  (t) => [primaryKey({ columns: [t.unitId, t.facilityId] })],
+);
+
+/** Amenities chosen by staff to surface in the listing overview. */
+export const unitOverviewFacilities = pgTable(
+  "unit_overview_facilities",
+  {
+    unitId: uuid("unit_id").notNull().references(() => accommodationUnits.id, { onDelete: "cascade" }),
+    facilityId: uuid("facility_id").notNull().references(() => facilities.id, { onDelete: "restrict" }),
   },
   (t) => [primaryKey({ columns: [t.unitId, t.facilityId] })],
 );

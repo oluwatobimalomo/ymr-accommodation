@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bedspace } from "./Bedspace";
+import { formatNaira } from "@/lib/format-currency";
 
 interface BedspaceData {
   id: string;
@@ -18,6 +19,8 @@ interface RoomData {
 interface Props {
   categoryId: string;
   mode: "PRIVATE" | "SHARED";
+  pricingModel: "PER_UNIT" | "PER_PERSON";
+  priceMinor: number;
   customerSelectsBedspace: boolean;
   customerSelectsRoom: boolean;
   allowEntireRoomBooking: boolean;
@@ -33,6 +36,8 @@ interface OccupantDraft {
 export function BookingForm({
   categoryId,
   mode,
+  pricingModel,
+  priceMinor,
   customerSelectsBedspace,
   customerSelectsRoom,
   allowEntireRoomBooking,
@@ -54,6 +59,8 @@ export function BookingForm({
   // an apartment with many rooms (e.g. 190) - only one room's grid ever
   // renders at once, instead of rendering all of them unconditionally.
   const [viewingRoomId, setViewingRoomId] = useState<string | null>(rooms.length === 1 ? rooms[0]!.id : null);
+  const [roomSearch, setRoomSearch] = useState("");
+  const [roomPage, setRoomPage] = useState(1);
 
   // Refresh derived availability while this tab is visible. A slightly
   // slower cadence avoids repeated full server renders in dormant tabs.
@@ -107,6 +114,10 @@ export function BookingForm({
 
   const canSubmit = usesBedspacePicker ? occupantSlots.length > 0 : autoCount > 0;
   const viewingRoom = rooms.find((r) => r.id === viewingRoomId);
+  const matchingRooms = rooms.filter((room) => room.name.toLocaleLowerCase().includes(roomSearch.trim().toLocaleLowerCase()));
+  const roomPageCount = Math.max(1, Math.ceil(matchingRooms.length / 12));
+  const visibleRooms = matchingRooms.slice((roomPage - 1) * 12, roomPage * 12);
+  const totalMinor = pricingModel === "PER_PERSON" ? priceMinor * occupantSlots.length : priceMinor;
 
   return (
     <form method="post" action={action} className="stack">
@@ -116,10 +127,10 @@ export function BookingForm({
 
       {usesBedspacePicker && needsRoomPicker && !viewingRoom && (
         <div className="stack">
-          <h2>Choose a room</h2>
-          <p>{rooms.length} rooms available. Pick one to see its bedspaces.</p>
-          <div className="grid">
-            {rooms.map((room) => {
+          <div className="room-picker-heading"><div><h2>Choose a room</h2><p>{rooms.length} rooms. Search by room name, then choose one to see its bedspaces.</p></div><span>{matchingRooms.length} shown</span></div>
+          <label className="room-search"><span className="sr-only">Search rooms</span><input type="search" value={roomSearch} onChange={(event) => { setRoomSearch(event.target.value); setRoomPage(1); }} placeholder="Search rooms…" /></label>
+          {matchingRooms.length === 0 ? <p className="empty-state">No rooms match “{roomSearch}”. Try another name.</p> : <div className="grid accommodation-listing-grid room-picker-grid">
+            {visibleRooms.map((room) => {
               const availableCount = room.bedspaces.filter((b) => b.status === "AVAILABLE").length;
               return (
                 <button
@@ -138,7 +149,8 @@ export function BookingForm({
                 </button>
               );
             })}
-          </div>
+          </div>}
+          {matchingRooms.length > 0 && <nav className="room-pagination" aria-label="Room pages"><span>Showing {(roomPage - 1) * 12 + 1}–{Math.min(roomPage * 12, matchingRooms.length)} of {matchingRooms.length}</span><div><button type="button" className="btn secondary" disabled={roomPage <= 1} onClick={() => setRoomPage((page) => page - 1)}>Previous</button><button type="button" className="btn secondary" disabled={roomPage >= roomPageCount} onClick={() => setRoomPage((page) => page + 1)}>Next</button></div></nav>}
         </div>
       )}
 
@@ -214,8 +226,8 @@ export function BookingForm({
             <label htmlFor="bookerEmail">Email</label>
             <input id="bookerEmail" name="bookerEmail" type="email" required autoComplete="email" value={bookerEmail} onChange={(event) => setBookerEmail(event.target.value)} />
           </div>
-          <label className="gift-booking-toggle"><input type="checkbox" checked={isGiftBooking} onChange={(event) => setIsGiftBooking(event.target.checked)} /> <span><strong>Booking for someone else?</strong><small>Enter their details so the reservation is under their name.</small></span></label>
-          {!isGiftBooking && occupantSlots.length === 1 && <div className="field"><label htmlFor="bookerGender">Your gender</label><select id="bookerGender" required value={bookerGender} onChange={(event) => setBookerGender(event.target.value as "MALE" | "FEMALE" | "")}><option value="" disabled>Select</option><option value="MALE">Male</option><option value="FEMALE">Female</option></select></div>}
+          <label className="gift-booking-toggle"><input type="checkbox" checked={isGiftBooking} onChange={(event) => setIsGiftBooking(event.target.checked)} /> <span><strong>Gift this to someone</strong><small>Enter their details so their reservation ticket can be sent to them.</small></span></label>
+          {mode === "SHARED" && !isGiftBooking && occupantSlots.length === 1 && <div className="field"><label htmlFor="bookerGender">Your gender</label><select id="bookerGender" required value={bookerGender} onChange={(event) => setBookerGender(event.target.value as "MALE" | "FEMALE" | "")}><option value="" disabled>Select</option><option value="MALE">Male</option><option value="FEMALE">Female</option></select></div>}
         </div>
       )}
 
@@ -224,18 +236,23 @@ export function BookingForm({
           <h2>Occupant details</h2>
           {occupantSlots.map((slot, i) => (
             <div key={slot.bedspaceId ?? i} className="card stack booking-details-card">
-              <h3>Occupant {i + 1}{slot.roomLabel ? ` — ${slot.roomLabel}` : ""}</h3>
+              <h3>{isGiftBooking ? "Recipient" : `Occupant ${i + 1}`}{slot.roomLabel ? ` — ${slot.roomLabel}` : ""}</h3>
               {slot.bedspaceId && <input type="hidden" name={`occupant_bedspace_${i}`} value={slot.bedspaceId} />}
-              <div className="field"><label htmlFor={`occupant_name_${i}`}>Full name</label><input id={`occupant_name_${i}`} name={`occupant_name_${i}`} required autoComplete="name" /></div>
-              <div className="field"><label htmlFor={`occupant_gender_${i}`}>Gender</label><select id={`occupant_gender_${i}`} name={`occupant_gender_${i}`} required defaultValue=""><option value="" disabled>Select</option><option value="MALE">Male</option><option value="FEMALE">Female</option></select></div>
-              <div className="field"><label htmlFor={`occupant_phone_${i}`}>Phone</label><input id={`occupant_phone_${i}`} name={`occupant_phone_${i}`} type="tel" autoComplete="tel" /></div>
-              <div className="field"><label htmlFor={`occupant_email_${i}`}>Email{isGiftBooking ? " (for the gift notification)" : ""}</label><input id={`occupant_email_${i}`} name={`occupant_email_${i}`} type="email" autoComplete="email" required={isGiftBooking} /></div>
+              <div className="field"><label htmlFor={`occupant_name_${i}`}>{isGiftBooking ? "Recipient name" : "Full name"}</label><input id={`occupant_name_${i}`} name={`occupant_name_${i}`} required autoComplete="name" /></div>
+              {mode === "SHARED" ? <div className="field"><label htmlFor={`occupant_gender_${i}`}>Gender</label><select id={`occupant_gender_${i}`} name={`occupant_gender_${i}`} required defaultValue=""><option value="" disabled>Select</option><option value="MALE">Male</option><option value="FEMALE">Female</option></select></div> : <input type="hidden" name={`occupant_gender_${i}`} value="UNSPECIFIED" />}
+              <div className="field"><label htmlFor={`occupant_phone_${i}`}>{isGiftBooking ? "Recipient phone number" : "Phone"}</label><input id={`occupant_phone_${i}`} name={`occupant_phone_${i}`} type="tel" autoComplete="tel" required={isGiftBooking} /></div>
+              <div className="field"><label htmlFor={`occupant_email_${i}`}>{isGiftBooking ? "Recipient email" : "Email"}</label><input id={`occupant_email_${i}`} name={`occupant_email_${i}`} type="email" autoComplete="email" required={isGiftBooking} /></div>
             </div>
           ))}
         </div>
       )}
 
-      {occupantSlots.length === 1 && !isGiftBooking && <><input type="hidden" name="occupant_name_0" value={bookerName} /><input type="hidden" name="occupant_gender_0" value={bookerGender} /><input type="hidden" name="occupant_phone_0" value={bookerPhone} /><input type="hidden" name="occupant_email_0" value={bookerEmail} /></>}
+      {occupantSlots.length === 1 && !isGiftBooking && <><input type="hidden" name="occupant_name_0" value={bookerName} /><input type="hidden" name="occupant_gender_0" value={mode === "SHARED" ? bookerGender : "UNSPECIFIED"} /><input type="hidden" name="occupant_phone_0" value={bookerPhone} /><input type="hidden" name="occupant_email_0" value={bookerEmail} /></>}
+
+      <div className="booking-total" aria-live="polite">
+        <span><strong>{occupantSlots.length ? (pricingModel === "PER_PERSON" ? "Estimated total" : "Accommodation total") : "Your total"}</strong><small>{occupantSlots.length ? (pricingModel === "PER_PERSON" ? `${occupantSlots.length} guest${occupantSlots.length === 1 ? "" : "s"} × ${formatNaira(priceMinor)} per person` : "For this accommodation") : "Select bedspaces to calculate your total."}</small></span>
+        <strong>{occupantSlots.length ? formatNaira(totalMinor) : "—"}</strong>
+      </div>
 
       <button className="btn" type="submit" disabled={!canSubmit}>
         Review and reserve

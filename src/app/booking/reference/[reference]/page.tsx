@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { ErrorBanner } from "@/components/AdminChrome";
 import { Badge } from "@/components/Badge";
 import { BookingStatusTracker } from "@/components/BookingStatusTracker";
+import { TicketDownloadActions } from "@/components/TicketDownloadActions";
+import { ClearBagOnSuccess } from "@/components/ClearBagOnSuccess";
 import { getBookingByReference } from "@/lib/booking/queries";
 import { confirmPaymentFromVerifiedResult } from "@/lib/payments/confirm-payment";
 import { verifyTransaction } from "@/lib/payments/paystack";
@@ -27,7 +29,8 @@ export default async function BookingConfirmationPage({
 }) {
   const { reference } = await params;
   const query = await searchParams;
-  const isPaystackCallback = !!(query.reference || query.trxref);
+  const hasPaystackCallback = !!(query.reference || query.trxref);
+  let verifiedPaystackReturn = false;
 
   let data = await getBookingByReference(reference);
   if (!data) notFound();
@@ -36,7 +39,7 @@ export default async function BookingConfirmationPage({
   // after checkout. We never trust that redirect alone - we re-verify
   // directly against Paystack's API before treating it as paid. The webhook
   // remains the authoritative backstop if the customer closes the tab here.
-  if (isPaystackCallback) {
+  if (hasPaystackCallback) {
     try {
       const verified = await verifyTransaction(reference);
       const outcome = await confirmPaymentFromVerifiedResult(verified);
@@ -47,6 +50,7 @@ export default async function BookingConfirmationPage({
             `Paystack reported requestedAmount=${verified.requestedAmountMinor} grossAmount=${verified.amountMinor} currency=${verified.currency}.`,
         );
       } else {
+        verifiedPaystackReturn = true;
         data = await getBookingByReference(reference); // re-fetch to show the now-updated status
       }
     } catch (e) {
@@ -58,18 +62,12 @@ export default async function BookingConfirmationPage({
   }
 
   if (!data) notFound();
-  const { booking, occupants, lodgeName, categoryName, checkInDate, checkOutDate } = data;
+  const { booking, occupants, lodgeName, categoryName, checkInDate, checkOutDate, coordinatorName, coordinatorPhone, items, bookerEmail, isGift } = data;
 
-  // Security: a booking reference alone (e.g. YMR26-ACM-00003) is
-  // sequential and guessable by design (the brief requires this exact
-  // format) - so it must never be sufficient on its own to view occupant
-  // names and payment status. Anyone landing here straight from Paystack's
-  // own redirect just proved they hold the payment session for this
-  // booking, so that one case is trusted without a further prompt. Every
-  // other visit (a bookmarked link, a guessed/enumerated URL, coming back
-  // later) must additionally match the phone number on file, exactly like
-  // /check-booking already requires.
-  if (!isPaystackCallback) {
+  // Only a successfully verified Paystack transaction may skip the phone
+  // check. Merely adding callback-looking query parameters to a booking URL
+  // must never expose occupant and coordinator details.
+  if (!verifiedPaystackReturn) {
     const phoneMatches =
       query.phone && booking.bookerPhone.replace(/\s+/g, "") === query.phone.trim().replace(/\s+/g, "");
     if (!phoneMatches) {
@@ -96,6 +94,8 @@ export default async function BookingConfirmationPage({
 
   return (
     <div className="booking-ticket-page stack">
+      {verifiedPaystackReturn && booking.paymentStatus === "PAID" && <ClearBagOnSuccess />}
+      <div className="booking-print-area">
       <header className={`booking-ticket-hero${booking.paymentStatus === "PAID" ? " is-paid" : ""}`}>
         <div className="ticket-confirmation-mark" aria-hidden="true">{booking.paymentStatus === "PAID" ? "✓" : "•"}</div>
         <div><span className="eyebrow">YMR Accommodation · Booking update</span><h1>{booking.paymentStatus === "PAID" ? "Your stay is confirmed" : "Your reservation is held"}</h1>
@@ -109,21 +109,26 @@ export default async function BookingConfirmationPage({
         <div className="ticket-card-topline"><span>BOOKING TICKET</span><Badge tone={booking.paymentStatus === "PAID" ? "brand" : "default"}>{PAYMENT_LABEL[booking.paymentStatus]}</Badge></div>
         <div className="ticket-reference-row"><div><span className="ticket-label">Ticket ID</span><strong className="ticket-reference">{booking.reference}</strong></div><div className="ticket-total"><span className="ticket-label">Total amount</span><strong>{formatNaira(booking.amountMinor)}</strong></div></div>
         <BookingStatusTracker paymentStatus={booking.paymentStatus} accommodationStatus={booking.accommodationStatus} />
-        <div className="ticket-stay-grid">
+        {items.length <= 1 && <div className="ticket-stay-grid">
           <div><span className="ticket-label">Lodge</span><strong>{lodgeName || "Accommodation"}</strong></div>
           <div><span className="ticket-label">Apartment</span><strong>{categoryName || "Assigned accommodation"}</strong></div>
           <div><span className="ticket-label">Check-in</span><strong>{formatDateOnly(checkInDate) || "To be confirmed"}</strong></div>
           <div><span className="ticket-label">Check-out</span><strong>{formatDateOnly(checkOutDate) || "To be confirmed"}</strong></div>
-        </div>
+        </div>}
       </section>
 
-      <div className="booking-ticket-lower">
-        <section className="card ticket-occupants">
+      <section className="card ticket-booker-details"><span className="eyebrow">Booked by</span><strong>{booking.bookerName}</strong><span>{bookerEmail || booking.bookerEmail}</span><span>{booking.bookerPhone}</span></section>
+
+      {items.length > 1 && <section className="card ticket-order-items"><div className="ticket-section-heading"><div><span className="eyebrow">Your accommodation</span><h2>Booking details by lodge</h2></div><span>{items.length} items</span></div>{items.map((item) => <article className="ticket-order-item" key={item.reference}><span className="ticket-label">Item {item.sequence}</span><h3>{item.apartmentName}</h3><p><strong>{item.lodgeName}</strong> · {formatDateOnly(item.checkInDate) || "Check-in to be confirmed"} – {formatDateOnly(item.checkOutDate) || "Check-out to be confirmed"}</p><ul>{item.occupants.map((guest, index) => <li key={`${guest.name}-${index}`}>{guest.name}{guest.allocation ? ` · ${guest.allocation}` : ""}</li>)}</ul><strong>{formatNaira(item.amountMinor)}</strong><div className="ticket-coordinator"><span className="ticket-label">Lodge Coordinator:</span><strong>{item.coordinatorName || "Contact support"}</strong><span>|</span>{item.coordinatorPhone ? <a href={`tel:${item.coordinatorPhone}`}>{item.coordinatorPhone}</a> : <a href="/support">Support</a>}</div></article>)}</section>}
+
+        {items.length <= 1 && isGift && <section className="card ticket-occupants">
           <div className="ticket-section-heading"><div><span className="eyebrow">Guest details</span><h2>Occupants</h2></div><span>{occupants.length} guest{occupants.length === 1 ? "" : "s"}</span></div>
-          <div className="ticket-guest-list">{occupants.map((occupant, index) => <div className="ticket-guest" key={occupant.id}><span className="ticket-guest-number">{String(index + 1).padStart(2, "0")}</span><strong>{occupant.name}</strong><span>{occupant.gender.toLowerCase()}</span></div>)}</div>
-        </section>
-        <aside className="ticket-next-step"><span className="eyebrow">Before you arrive</span><h2>Keep your Ticket ID handy.</h2><p>Use the booking reference and the phone number on your reservation if you need to look up your booking or contact the accommodation team.</p><div className="ticket-actions"><a className="btn" href="/check-booking">Manage booking</a><a className="ticket-support-link" href="/support">Need help? Contact support</a></div></aside>
+          <div className="ticket-guest-list">{occupants.map((occupant, index) => <div className="ticket-guest" key={occupant.id}><span className="ticket-guest-number">{String(index + 1).padStart(2, "0")}</span><strong>{occupant.name}</strong><span>{occupant.gender === "UNSPECIFIED" ? "—" : occupant.gender.toLowerCase()}</span></div>)}</div>
+        </section>}
+        {items.length <= 1 && <div className="card ticket-coordinator-card"><div className="ticket-coordinator"><span className="ticket-label">Lodge Coordinator:</span><strong>{coordinatorName || "Contact support"}</strong><span>|</span>{coordinatorPhone ? <a href={`tel:${coordinatorPhone}`}>{coordinatorPhone}</a> : <a href="/support">Support</a>}</div></div>}
       </div>
+      <TicketDownloadActions ticket={{ ticketId: booking.reference, guestName: booking.bookerName, bookerEmail: bookerEmail || booking.bookerEmail, bookerPhone: booking.bookerPhone, lodgeName: lodgeName || "Accommodation", apartmentName: categoryName || "Assigned accommodation", amountMinor: booking.amountMinor, paymentStatus: booking.paymentStatus, accommodationStatus: booking.accommodationStatus, occupants: occupants.map((occupant) => occupant.name), isGift, checkInDate: checkInDate ?? undefined, checkOutDate: checkOutDate ?? undefined, coordinatorName, coordinatorPhone, items }} />
+      <aside className="ticket-next-step booking-screen-only"><span className="eyebrow">Before you arrive</span><h2>Keep your Ticket ID handy.</h2><p>Use the booking reference and the phone number on your reservation if you need to look up your booking or contact the accommodation team.</p><div className="ticket-actions"><a className="btn" href="/check-booking">Manage booking</a><a className="ticket-support-link" href="/support">Need help? Contact support</a></div></aside>
     </div>
   );
 }

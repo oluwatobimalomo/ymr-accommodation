@@ -1,5 +1,9 @@
 # YMR Accommodation - Phase 1-4 (Foundation, Inventory, Booking, Operations groundwork)
 
+## Phase 5B — arrival, departure and key custody
+
+The admin booking page now supports check-in and check-out. Check-in requires a paid, fully allocated booking unless a staff member has the audited override permission and enters a reason. Keys can be issued to an allocated occupant after check-in, tracked by lodge-scoped key label, returned, or reported missing with a reason. Checkout is blocked while a key remains issued. Migration `0019_checkin_key_custody.sql` adds the key handover history and active-key uniqueness constraints. Email delivery remains a later step.
+
 ## Phase 5A — booking and payment correctness
 
 Private whole-unit bookings now create a durable `private_unit_allocations` claim. Its partial unique index permits multiple occupants on one booking while preventing two unreleased bookings from claiming the same unit. The claim remains after the payment hold is removed and is released on cancellation or pending-hold expiry. Migration `0009_booking_payment_hardening.sql` backfills active claims; it aborts with a diagnostic if existing active allocations or Paystack transaction IDs are duplicated, so those records must be reviewed before deployment.
@@ -146,7 +150,6 @@ Tests: **212 total** (was 200) — added webhook signature tests and 6 tests cov
 **Solid and tested:** inventory hierarchy, race-condition-safe booking/holds, gender enforcement, RBAC, audit logging, event config, support tickets, admin booking visibility.
 
 **Still not built — this is the real remaining work, not yet started:**
-- **Check-in / check-out** (sections 24-25) and **key custody** (sections 26-29) — no schema, no service, no UI.
 - **Reallocation** (section 33) — no way to move an occupant between bedspaces after booking, beyond a full cancel.
 - **Reports and CSV/Excel export** (section 35) — none exist.
 - **Email notifications** (section 38) — nothing is emailed at any point in the flow, including payment confirmation.

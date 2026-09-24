@@ -5,6 +5,7 @@ import { Badge } from "@/components/Badge";
 import { ImageThumb } from "@/components/ImageThumb";
 import { ImageUploadInput } from "@/components/ImageUploadInput";
 import { ApartmentStayDates } from "@/components/ApartmentStayDates";
+import { ApartmentAmenitiesForm } from "@/components/ApartmentAmenitiesForm";
 import { requireActor } from "@/lib/auth/require";
 import { getApartmentDetail } from "@/lib/inventory/apartments";
 import { listFacilities } from "@/lib/inventory/facilities";
@@ -18,7 +19,8 @@ const STATUS_LABEL: Record<string, string> = {
   MAINTENANCE: "Maintenance",
   RETIRED: "Retired",
 };
-const BED_SPECIFICATIONS = ["6x6", "4x6", "Single Bed", "Double Bed", "Bunk Bed"];
+const BED_TYPES = ["Single Bed", "Double Bed", "Bunk"];
+const BED_SIZES = ["4x6", "6x6", "3x6", "5x6"];
 
 export default async function ApartmentDetailPage({
   params,
@@ -32,11 +34,9 @@ export default async function ApartmentDetailPage({
   const { error } = await searchParams;
   const detail = await getApartmentDetail(id);
   if (!detail) notFound();
-  const { unit, category, facilityIds } = detail;
+  const { unit, category, facilityIds, overviewFacilityIds } = detail;
   const lodge = await getLodge(category.lodgeId);
   const allFacilities = category.mode === "PRIVATE" ? (await listFacilities()).filter((facility) => facility.name.trim().toLowerCase() !== "bed") : [];
-  const selectedFacilityIds = new Set(facilityIds);
-
   return (
     <div className="stack">
       <p>
@@ -112,37 +112,37 @@ export default async function ApartmentDetailPage({
       {category.mode === "PRIVATE" && allFacilities.length > 0 && (
         <div className="card stack">
           <h2>Amenities</h2>
-          <form method="post" action={`/api/admin/apartments/${unit.id}`} className="stack">
-            <input type="hidden" name="intent" value="facilities" />
-            {allFacilities.filter((f) => !["air conditioning", "bed"].includes(f.name.trim().toLowerCase())).map((f) => (
-              <label key={f.id} style={{ display: "flex", gap: "8px", alignItems: "center", fontWeight: 400 }}>
-                <input type="checkbox" name="facilityIds" value={f.id} defaultChecked={selectedFacilityIds.has(f.id)} />
-                {f.name}
-              </label>
-            ))}
-            <button className="btn secondary" type="submit">
-              Save amenities
-            </button>
-          </form>
+          <ApartmentAmenitiesForm action={`/api/admin/apartments/${unit.id}`} facilities={allFacilities} initialFacilityIds={facilityIds} initialOverviewIds={overviewFacilityIds} />
         </div>
       )}
 
       <div className="card stack">
-        <h2>Bed specifications</h2>
+        <h2>Beds</h2>
         <form method="post" action={`/api/admin/apartments/${unit.id}`} className="stack">
-          <input type="hidden" name="intent" value="bed-specifications" />
+          <input type="hidden" name="intent" value="beds" />
           <fieldset className="checkbox-field">
-            <legend>Select all bed types and sizes that apply</legend>
+            <legend>Bed type</legend>
             <div className="checkbox-grid">
-              {BED_SPECIFICATIONS.map((specification) => (
-                <label className="checkbox-option" key={specification}>
-                  <input type="checkbox" name="bedSpecifications" value={specification} defaultChecked={unit.bedSpecifications.includes(specification)} />
-                  <span>{specification}</span>
+              {BED_TYPES.map((bedType) => (
+                <label className="checkbox-option" key={bedType}>
+                  <input type="checkbox" name="bedTypes" value={bedType} defaultChecked={unit.bedTypes.includes(bedType) || unit.bedSpecifications.includes(bedType)} />
+                  <span>{bedType}</span>
                 </label>
               ))}
             </div>
           </fieldset>
-          <button className="btn secondary" type="submit">Save bed specifications</button>
+          <fieldset className="checkbox-field">
+            <legend>Bed size</legend>
+            <div className="checkbox-grid">
+              {BED_SIZES.map((bedSize) => (
+                <label className="checkbox-option" key={bedSize}>
+                  <input type="checkbox" name="bedSizes" value={bedSize} defaultChecked={unit.bedSizes.includes(bedSize) || unit.bedSpecifications.includes(bedSize)} />
+                  <span>{bedSize}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <button className="btn secondary" type="submit">Save beds</button>
         </form>
       </div>
 
