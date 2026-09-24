@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { rolePermissions, roles, userRoles, users } from "@/db/schema";
 import { computeGrants, type Actor } from "@/lib/authz/authorize";
@@ -8,30 +8,41 @@ const KNOWN = new Set<string>(ALL_PERMISSIONS);
 
 export async function loadActor(userId: string): Promise<Actor | null> {
   const db = getDb();
-  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  const rows = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      name: users.name,
+      status: users.status,
+      roleId: roles.id,
+      roleKey: roles.key,
+      lodgeScoped: roles.lodgeScoped,
+      permissionKey: rolePermissions.permissionKey,
+    })
+    .from(users)
+    .leftJoin(userRoles, eq(userRoles.userId, users.id))
+    .leftJoin(roles, eq(roles.id, userRoles.roleId))
+    .leftJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
+    .where(eq(users.id, userId));
+  const user = rows[0];
   if (!user || user.status !== "ACTIVE") return null;
 
-  const userRoleRows = await db
-    .select({ id: roles.id, key: roles.key, lodgeScoped: roles.lodgeScoped })
-    .from(userRoles)
-    .innerJoin(roles, eq(roles.id, userRoles.roleId))
-    .where(eq(userRoles.userId, userId));
-
-  const roleIds = userRoleRows.map((r) => r.id);
-  const grantRows = roleIds.length
-    ? await db
-        .select({ roleId: rolePermissions.roleId, key: rolePermissions.permissionKey })
-        .from(rolePermissions)
-        .where(inArray(rolePermissions.roleId, roleIds))
-    : [];
+  const roleMap = new Map<string, { key: string; lodgeScoped: boolean; permissions: Permission[] }>();
+  for (const row of rows) {
+    if (!row.roleId || !row.roleKey) continue;
+    let role = roleMap.get(row.roleId);
+    if (!role) {
+      role = { key: row.roleKey, lodgeScoped: row.lodgeScoped ?? false, permissions: [] };
+      roleMap.set(row.roleId, role);
+    }
+    if (row.permissionKey && KNOWN.has(row.permissionKey)) role.permissions.push(row.permissionKey as Permission);
+  }
+  const userRoleRows = [...roleMap.values()];
 
   const grants = computeGrants(
     userRoleRows.map((r) => ({
       lodgeScoped: r.lodgeScoped,
-      // Unknown keys in the DB are ignored rather than trusted.
-      permissions: grantRows
-        .filter((g) => g.roleId === r.id && KNOWN.has(g.key))
-        .map((g) => g.key as Permission),
+      permissions: r.permissions,
     })),
   );
 

@@ -3,12 +3,10 @@
  *  YMR THEME - THE ONLY FILE THAT NEEDS EDITING TO REBRAND
  * ============================================================================
  *  Colors are sampled from the official YMR/RCCG flame-and-dove logo
- *  (public/ymr-mark.png). Typography is still a PLACEHOLDER system stack —
- *  the site's actual typeface could not be extracted; replace `font.display`
- *  and `font.body` below once it's confirmed.
+ *  (public/ymr-mark.png). Typography pairs a warm editorial serif with a
+ *  clean system sans stack so the site remains fast and works offline.
  *
- *  To use YMR's real typeface: add it with next/font (or @font-face) in
- *  app/layout.tsx and put its CSS variable/family name in `font.display`/`font.body`.
+ *  The font stacks intentionally use locally available system fonts.
  * ============================================================================
  */
 export const theme = {
@@ -37,9 +35,8 @@ export const theme = {
     infoSoft: "#DBEAFE",
   },
   font: {
-    // PLACEHOLDER: system stacks until the YMR typeface is confirmed
-    display: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-    body: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    display: '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif',
+    body: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
   },
   radius: { sm: "6px", md: "12px", lg: "20px", pill: "999px" },
   space: { 1: "4px", 2: "8px", 3: "12px", 4: "16px", 5: "24px", 6: "32px", 7: "48px", 8: "72px" },

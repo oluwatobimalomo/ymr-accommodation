@@ -9,7 +9,7 @@ export function ImageThumb({ src, alt, aspect = "4/3" }: Props) {
   if (src) {
     return (
       <div style={{ aspectRatio: aspect, overflow: "hidden", borderRadius: "var(--radius-md)", background: "var(--color-line)" }}>
-        <img src={src} alt={alt} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        <img src={src} alt={alt} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
       </div>
     );
   }

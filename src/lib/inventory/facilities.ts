@@ -24,7 +24,8 @@ export async function createFacility(actor: Actor, name: string, icon = "") {
 }
 
 export async function listFacilities() {
-  return getDb().select().from(facilities).orderBy(facilities.sortOrder, facilities.name);
+  const rows = await getDb().select().from(facilities).orderBy(facilities.sortOrder, facilities.name);
+  return rows.filter((facility) => facility.name.trim().toLowerCase() !== "air conditioning");
 }
 
 /** Deleting is deliberately unavailable while a unit still uses the facility — the FK (ON DELETE RESTRICT) enforces this even if a caller is added later that skips this check. */

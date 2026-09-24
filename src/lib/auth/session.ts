@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { eq, lt } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { sessions } from "@/db/schema";
@@ -34,7 +35,7 @@ export async function createSession(
 }
 
 /** Returns the signed-in staff actor, or null. Call from server components and route handlers. */
-export async function getCurrentActor(): Promise<Actor | null> {
+export const getCurrentActor = cache(async (): Promise<Actor | null> => {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
@@ -48,7 +49,7 @@ export async function getCurrentActor(): Promise<Actor | null> {
     return null;
   }
   return loadActor(session.userId);
-}
+});
 
 export async function destroyCurrentSession(): Promise<void> {
   const jar = await cookies();

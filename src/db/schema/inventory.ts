@@ -1,5 +1,6 @@
 import {
   boolean,
+  date,
   integer,
   numeric,
   pgTable,
@@ -60,6 +61,9 @@ export const accommodationCategories = pgTable("accommodation_categories", {
   pricingModel: pricingModel("pricing_model").notNull(),
   /** Minor units (kobo). Currency is inherited from the parent event. */
   defaultPriceMinor: integer("default_price_minor").notNull(),
+  /** Dates for the stay represented by this listed, already-totalled price. */
+  checkInDate: date("check_in_date", { mode: "string" }),
+  checkOutDate: date("check_out_date", { mode: "string" }),
   description: text("description").notNull().default(""),
   /** Whether the customer picks a specific room, or the system auto-allocates one. */
   customerSelectsRoom: boolean("customer_selects_room").notNull().default(true),
@@ -88,6 +92,7 @@ export const accommodationUnits = pgTable("accommodation_units", {
   description: text("description").notNull().default(""),
   capacity: integer("capacity").notNull().default(0),
   images: text("images").array().notNull().default([]),
+  bedSpecifications: text("bed_specifications").array().notNull().default([]),
   status: unitStatus("status").notNull().default("ACTIVE"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

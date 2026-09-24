@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AdminNav, ErrorBanner } from "@/components/AdminChrome";
+import { ErrorBanner } from "@/components/AdminChrome";
 import { requireActor } from "@/lib/auth/require";
 import { can } from "@/lib/authz/authorize";
 import { getBookingDetail } from "@/lib/booking/admin-queries";
+import { formatNaira } from "@/lib/format-currency";
 import { getDb } from "@/db/client";
 import { paymentTransactions } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -28,7 +29,6 @@ export default async function AdminBookingDetailPage({
 
   return (
     <div className="stack">
-      <AdminNav />
       <p>
         <Link href="/admin/bookings">&larr; All bookings</Link>
       </p>
@@ -41,7 +41,7 @@ export default async function AdminBookingDetailPage({
         </p>
         <p style={{ margin: 0 }}>{category?.name}</p>
         <p style={{ margin: 0 }}>
-          {(booking.amountMinor / 100).toLocaleString()} {booking.currency} · Payment: {booking.paymentStatus} ·
+          {formatNaira(booking.amountMinor)} · Payment: {booking.paymentStatus} ·
           Accommodation: {booking.accommodationStatus.replace(/_/g, " ")}
         </p>
       </div>
@@ -68,7 +68,7 @@ export default async function AdminBookingDetailPage({
             {transactions.map((t) => (
               <div key={t.id} className="card">
                 <p style={{ margin: 0 }}>
-                  {t.status} · {(t.amountMinor / 100).toLocaleString()} {t.currency} · {t.gatewayResponse}
+                  {t.status} · {formatNaira(t.amountMinor)} · {t.gatewayResponse}
                 </p>
                 <p className="listing-meta" style={{ margin: "4px 0 0" }}>
                   Ref {t.reference} {t.paidAt && `· Paid ${new Date(t.paidAt).toLocaleString()}`}

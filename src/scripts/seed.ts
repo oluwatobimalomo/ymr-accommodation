@@ -83,8 +83,9 @@ async function main() {
   // Standard facility list (section 7 of the brief). Configurable — more can
   // be added later from Admin > Facilities without a code change.
   const standardFacilities = [
+    "Bed",
     "Fan",
-    "Air Conditioning",
+    "Air Conditioner",
     "Television",
     "Refrigerator",
     "Reading Table/Chair",
@@ -118,7 +119,7 @@ async function main() {
 
   const allFacilities = await db.select().from(facilities);
   const fan = allFacilities.find((f) => f.name === "Fan");
-  const ac = allFacilities.find((f) => f.name === "Air Conditioning");
+  const ac = allFacilities.find((f) => f.name === "Air Conditioner");
 
   async function lodgeExists(slug: string): Promise<boolean> {
     const [row] = await db.select().from(lodges).where(eq(lodges.slug, slug)).limit(1);

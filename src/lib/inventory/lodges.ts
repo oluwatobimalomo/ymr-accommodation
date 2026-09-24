@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, min, sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
-import { events, lodges } from "@/db/schema";
+import { accommodationCategories, events, lodges } from "@/db/schema";
 import { recordAudit } from "@/lib/audit";
 import { authorize, type Actor } from "@/lib/authz/authorize";
 
@@ -128,7 +128,18 @@ export async function setLodgeStatus(
 }
 
 export async function listLodges() {
-  return getDb().select().from(lodges).orderBy(lodges.name);
+  return getDb().select({
+    id: lodges.id,
+    name: lodges.name,
+    address: lodges.address,
+    slug: lodges.slug,
+    status: lodges.status,
+    mainImage: sql<string | null>`${lodges.images}[1]`,
+    minimumPriceMinor: min(accommodationCategories.defaultPriceMinor),
+  }).from(lodges)
+    .leftJoin(accommodationCategories, eq(accommodationCategories.lodgeId, lodges.id))
+    .groupBy(lodges.id)
+    .orderBy(lodges.name);
 }
 
 export async function getLodge(lodgeId: string) {

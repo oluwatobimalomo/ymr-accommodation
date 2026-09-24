@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AdminNav, ErrorBanner } from "@/components/AdminChrome";
+import { ErrorBanner } from "@/components/AdminChrome";
 import { ApartmentForm } from "@/components/ApartmentForm";
 import { requireActor } from "@/lib/auth/require";
 import { listFacilities } from "@/lib/inventory/facilities";
@@ -20,17 +20,16 @@ export default async function NewApartmentPage({
   const { error } = await searchParams;
   const lodge = await getLodge(id);
   if (!lodge) notFound();
-  const facilities = await listFacilities();
+  const facilities = (await listFacilities()).filter((facility) => facility.name.trim().toLowerCase() !== "bed");
 
   return (
     <div className="stack">
-      <AdminNav />
       <p>
         <Link href={`/admin/lodges/${id}`}>&larr; {lodge.name}</Link>
       </p>
       <h1>Add an apartment</h1>
       <ErrorBanner error={error} />
-      <div className="card">
+      <div className="card apartment-form-card">
         <ApartmentForm lodgeId={id} facilities={facilities} action="/api/admin/apartments" />
       </div>
     </div>

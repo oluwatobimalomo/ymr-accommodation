@@ -1,4 +1,4 @@
-import { AdminNav, ErrorBanner } from "@/components/AdminChrome";
+import { ErrorBanner } from "@/components/AdminChrome";
 import { requireActor } from "@/lib/auth/require";
 import { can } from "@/lib/authz/authorize";
 import { listFacilities } from "@/lib/inventory/facilities";
@@ -14,7 +14,6 @@ export default async function FacilitiesPage({ searchParams }: { searchParams: P
 
   return (
     <div className="stack">
-      <AdminNav />
       <h1>Facilities</h1>
       <ErrorBanner error={error} />
       <p>These appear as checkboxes when editing a unit. Add new ones here as needs come up.</p>

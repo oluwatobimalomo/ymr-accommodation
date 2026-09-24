@@ -1,12 +1,23 @@
-import { and, desc, eq, isNull, ne } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNull, lte, ne, sql, sum } from "drizzle-orm";
 import { getDb } from "@/db/client";
-import { accommodationCategories, bookingOccupants, bookings, inventoryHolds, lodges, privateUnitAllocations } from "@/db/schema";
+import { accommodationCategories, bookingOccupants, bookings, inventoryHolds, lodges, paymentTransactions, privateUnitAllocations } from "@/db/schema";
 import { recordAudit } from "@/lib/audit";
 import { authorize, type Actor } from "@/lib/authz/authorize";
 
-export async function listBookings(actor: Actor) {
+export interface BookingListFilters { status?: string; lodgeId?: string; from?: string; to?: string; page?: string }
+
+export async function getBookingsDashboard(actor: Actor, filters: BookingListFilters = {}) {
   authorize(actor, "booking.read");
-  return getDb()
+  const db = getDb();
+  const where = [];
+  if (["PENDING", "PAID", "FAILED", "REFUNDED", "CANCELLED"].includes(filters.status ?? "")) where.push(eq(bookings.paymentStatus, filters.status as never));
+  if (filters.lodgeId) where.push(eq(lodges.id, filters.lodgeId));
+  if (filters.from && !Number.isNaN(Date.parse(filters.from))) where.push(gte(bookings.createdAt, new Date(`${filters.from}T00:00:00`)));
+  if (filters.to && !Number.isNaN(Date.parse(filters.to))) where.push(lte(bookings.createdAt, new Date(`${filters.to}T23:59:59.999`)));
+  const condition = where.length ? and(...where) : undefined;
+  const page = Math.max(1, Number.parseInt(filters.page ?? "1", 10) || 1);
+  const limit = 100;
+  const base = db
     .select({
       id: bookings.id,
       reference: bookings.reference,
@@ -21,8 +32,13 @@ export async function listBookings(actor: Actor) {
     })
     .from(bookings)
     .innerJoin(accommodationCategories, eq(accommodationCategories.id, bookings.categoryId))
-    .innerJoin(lodges, eq(lodges.id, accommodationCategories.lodgeId))
-    .orderBy(desc(bookings.createdAt));
+    .innerJoin(lodges, eq(lodges.id, accommodationCategories.lodgeId));
+  const [rows, totals, transactions] = await Promise.all([
+    base.where(condition).orderBy(desc(bookings.createdAt)).limit(limit).offset((page - 1) * limit),
+    db.select({ count: count(), amountMinor: sum(sql`case when ${bookings.paymentStatus} = 'PAID' then ${bookings.amountMinor} else 0 end`).mapWith(Number), paid: sql<number>`count(*) filter (where ${bookings.paymentStatus} = 'PAID')`.mapWith(Number), pending: sql<number>`count(*) filter (where ${bookings.paymentStatus} = 'PENDING')`.mapWith(Number) }).from(bookings).innerJoin(accommodationCategories, eq(accommodationCategories.id, bookings.categoryId)).innerJoin(lodges, eq(lodges.id, accommodationCategories.lodgeId)).where(condition),
+    db.select({ count: count() }).from(paymentTransactions).innerJoin(bookings, eq(bookings.id, paymentTransactions.bookingId)).innerJoin(accommodationCategories, eq(accommodationCategories.id, bookings.categoryId)).innerJoin(lodges, eq(lodges.id, accommodationCategories.lodgeId)).where(condition),
+  ]);
+  return { rows, totals: totals[0] ?? { count: 0, amountMinor: 0, paid: 0, pending: 0 }, transactionCount: transactions[0]?.count ?? 0, page, limit };
 }
 
 export async function getBookingDetail(actor: Actor, bookingId: string) {

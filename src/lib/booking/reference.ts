@@ -1,39 +1,27 @@
-import { randomBytes } from "node:crypto";
+import { randomInt } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import type { DbOrTx } from "@/db/client";
 import { bookings, events } from "@/db/schema";
 
-// Excludes visually-ambiguous characters (0/O, 1/I/L) so a reference read
-// aloud at check-in or typed by hand is unlikely to be mistyped.
-const REFERENCE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+function lodgeCode(name: string): string {
+  const words = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().match(/[A-Z]+/g) ?? [];
+  const code = words.length > 1 ? `${words[0]![0]}${words[1]![0]}` : (words[0] ?? "YM").slice(0, 2);
+  return code.padEnd(2, "X");
+}
 
-function randomReferenceCode(length = 8): string {
-  const bytes = randomBytes(length);
-  let out = "";
-  for (let i = 0; i < length; i++) out += REFERENCE_CHARS[bytes[i]! % REFERENCE_CHARS.length];
-  return out;
+function randomReferenceCode(): string {
+  const digits = String(randomInt(0, 1_000_000)).padStart(6, "0");
+  const letters = String.fromCharCode(65 + randomInt(0, 26), 65 + randomInt(0, 26));
+  return `${digits}${letters}`;
 }
 
 /**
- * Generates an unpredictable booking reference, e.g. YMR26-ACM-7K9XQP24.
- *
- * This is deliberately NOT sequential. An earlier version incremented a
- * counter (YMR26-ACM-00001, 00002, ...), which meant anyone could guess or
- * enumerate every booking in the system just by trying consecutive numbers
- * in the URL - a real way to view or attempt to claim someone else's
- * booking. The random 8-character suffix here (drawn from a 32-character
- * alphabet, ~40 bits of entropy) makes that infeasible, while staying
- * short enough to read aloud or type at check-in.
- *
- * The event's `bookingSeq` counter is still incremented for internal
- * reporting (a simple running count of bookings per event) but no longer
- * appears in the reference itself.
- *
- * Collisions are astronomically unlikely at this entropy, but the code is
- * still checked against existing references and retried a few times as a
- * hard guarantee rather than trusting probability alone.
+ * New booking references keep the event year, use the first two words of
+ * the lodge name, then six cryptographically random digits and two letters.
+ * Existing references remain unchanged. The event's running booking count
+ * is still incremented for internal reporting.
  */
-export async function nextBookingReference(tx: DbOrTx, eventId: string): Promise<string> {
+export async function nextBookingReference(tx: DbOrTx, eventId: string, lodgeName: string): Promise<string> {
   const [event] = await tx
     .update(events)
     .set({ bookingSeq: sql`${events.bookingSeq} + 1` })
@@ -41,8 +29,10 @@ export async function nextBookingReference(tx: DbOrTx, eventId: string): Promise
     .returning({ prefix: events.bookingRefPrefix });
   if (!event) throw new Error("That event could not be found.");
 
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const candidate = `${event.prefix}-${randomReferenceCode()}`;
+  const eventCode = event.prefix.split("-")[0] || event.prefix;
+  const propertyCode = lodgeCode(lodgeName);
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const candidate = `${eventCode}-${propertyCode}-${randomReferenceCode()}`;
     const [existing] = await tx.select({ id: bookings.id }).from(bookings).where(eq(bookings.reference, candidate)).limit(1);
     if (!existing) return candidate;
   }

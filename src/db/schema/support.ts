@@ -1,14 +1,17 @@
 import { boolean, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { bookings } from "./booking";
+import { lodges } from "./inventory";
 import { ticketCategory, ticketStatus } from "./enums";
 
 export const supportTickets = pgTable("support_tickets", {
   id: uuid("id").primaryKey().defaultRandom(),
   reference: text("reference").notNull().unique(),
   bookingId: uuid("booking_id").references(() => bookings.id, { onDelete: "set null" }),
+  lodgeId: uuid("lodge_id").references(() => lodges.id, { onDelete: "set null" }),
   customerName: text("customer_name").notNull(),
   customerEmail: text("customer_email").notNull(),
   customerPhone: text("customer_phone").notNull().default(""),
+  contactPreference: text("contact_preference").notNull().default("WHATSAPP"),
   category: ticketCategory("category").notNull(),
   subject: text("subject").notNull(),
   description: text("description").notNull(),

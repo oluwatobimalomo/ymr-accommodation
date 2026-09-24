@@ -5,8 +5,8 @@ import { eventStatus } from "./enums";
  * One row per YMR edition. Every booking will reference an event, so past
  * editions stay intact when a new one is created.
  *
- * booking_seq is the per-event counter used to build references such as
- * YMR26-ACM-00001. It is incremented atomically (UPDATE ... RETURNING) in Phase 3.
+ * booking_seq is the per-event count retained for reporting. New customer
+ * references are lodge-based and random; the counter is not exposed.
  */
 export const events = pgTable("events", {
   id: uuid("id").primaryKey().defaultRandom(),

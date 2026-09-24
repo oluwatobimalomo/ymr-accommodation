@@ -14,6 +14,7 @@ export async function handleAdminAction(
   request: Request,
   redirectTo: string,
   action: (form: FormData, actor: Actor) => Promise<void>,
+  redirectSuccessTo = redirectTo,
 ): Promise<Response> {
   if (!isSameOrigin(request)) return NextResponse.json({ error: "Bad origin" }, { status: 403 });
 
@@ -23,7 +24,7 @@ export async function handleAdminAction(
   const form = await request.formData();
   try {
     await action(form, actor);
-    return NextResponse.redirect(new URL(redirectTo, request.url), 303);
+    return NextResponse.redirect(new URL(redirectSuccessTo, request.url), 303);
   } catch (e) {
     const message = e instanceof ForbiddenError ? "You don't have permission to do this." : safeErrorMessage(e);
     const url = new URL(redirectTo, request.url);

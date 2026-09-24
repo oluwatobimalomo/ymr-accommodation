@@ -17,22 +17,28 @@ export async function POST(request: Request) {
 
   try {
     const mode = String(form.get("mode")) as "PRIVATE" | "SHARED";
+    const checkInDate = String(form.get("checkInDate") ?? "").trim();
+    const checkOutDate = String(form.get("checkOutDate") ?? "").trim();
+    if (!checkInDate || !checkOutDate) throw new Error("Choose both the check-in and check-out dates.");
     const files = form.getAll("images").filter((f): f is File => f instanceof File);
     const images = await filesToDataUris(files);
 
-    const result = await createApartment(actor, {
+    await createApartment(actor, {
       lodgeId,
       name: String(form.get("name") ?? ""),
       mode,
       priceNaira: Number(form.get("priceNaira") ?? 0),
+      checkInDate,
+      checkOutDate,
       images,
-      facilityIds: mode === "PRIVATE" ? form.getAll("facilityIds").map(String) : undefined,
+      facilityIds: form.getAll("facilityIds").map(String),
+      bedSpecifications: form.getAll("bedSpecifications").map(String),
       genderRestriction: mode === "SHARED" ? (String(form.get("genderRestriction")) as "ANY" | "MALE" | "FEMALE") : undefined,
       bedspaceCount: mode === "SHARED" ? Number(form.get("bedspaceCount") ?? 0) : undefined,
       roomCount: mode === "SHARED" ? Number(form.get("roomCount") ?? 1) : undefined,
     });
 
-    return NextResponse.redirect(new URL(`/admin/apartments/${result.unitId}`, request.url), 303);
+    return NextResponse.redirect(new URL(`/admin/lodges/${lodgeId}?success=apartment-created`, request.url), 303);
   } catch (e) {
     return NextResponse.redirect(new URL(`${backTo}?error=${encodeURIComponent(safeErrorMessage(e))}`, request.url), 303);
   }

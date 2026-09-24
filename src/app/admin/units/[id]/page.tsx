@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AdminNav, ErrorBanner } from "@/components/AdminChrome";
+import { ErrorBanner } from "@/components/AdminChrome";
 import { ImageThumb } from "@/components/ImageThumb";
+import { ImageUploadInput } from "@/components/ImageUploadInput";
 import { requireActor } from "@/lib/auth/require";
 import { can } from "@/lib/authz/authorize";
 import { getCategory } from "@/lib/inventory/categories";
@@ -37,7 +38,6 @@ export default async function UnitDetailPage({
 
   return (
     <div className="stack">
-      <AdminNav />
       <p>
         <Link href={`/admin/categories/${unit.categoryId}`}>&larr; {category?.name ?? "Category"}</Link>
       </p>
@@ -130,13 +130,7 @@ export default async function UnitDetailPage({
             )}
             <div className="field">
               <label htmlFor="new-unit-images">Add more photos</label>
-              <input
-                id="new-unit-images"
-                name="images"
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                multiple
-              />
+              <ImageUploadInput id="new-unit-images" />
             </div>
             <button className="btn secondary" type="submit">
               Save photos

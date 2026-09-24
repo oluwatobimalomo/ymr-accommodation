@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Bedspace } from "./Bedspace";
-import { ImageThumb } from "./ImageThumb";
 
 interface BedspaceData {
   id: string;
   letter: string;
-  status: "AVAILABLE" | "BLOCKED" | "MAINTENANCE" | "RETIRED";
+  status: "AVAILABLE" | "HELD" | "OCCUPIED" | "BLOCKED" | "MAINTENANCE" | "RETIRED";
 }
 interface RoomData {
   id: string;
@@ -15,13 +15,6 @@ interface RoomData {
   genderRestriction: "ANY" | "MALE" | "FEMALE";
   bedspaces: BedspaceData[];
 }
-interface UnitData {
-  id: string;
-  name: string;
-  capacity: number;
-  imageUrl?: string;
-}
-
 interface Props {
   categoryId: string;
   mode: "PRIVATE" | "SHARED";
@@ -29,7 +22,6 @@ interface Props {
   customerSelectsRoom: boolean;
   allowEntireRoomBooking: boolean;
   rooms: RoomData[];
-  units: UnitData[];
   action: string;
 }
 
@@ -45,13 +37,17 @@ export function BookingForm({
   customerSelectsRoom,
   allowEntireRoomBooking,
   rooms,
-  units,
   action,
 }: Props) {
+  const router = useRouter();
   const [selected, setSelected] = useState<OccupantDraft[]>([]);
   const [entireRoomId, setEntireRoomId] = useState<string | null>(null);
-  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(units[0]?.id ?? null);
   const [autoCount, setAutoCount] = useState(1);
+  const [isGiftBooking, setIsGiftBooking] = useState(false);
+  const [bookerName, setBookerName] = useState("");
+  const [bookerPhone, setBookerPhone] = useState("");
+  const [bookerEmail, setBookerEmail] = useState("");
+  const [bookerGender, setBookerGender] = useState<"MALE" | "FEMALE" | "">("");
   // Only relevant when there's more than one room: which room the customer
   // is currently looking at. A single-room apartment skips this entirely
   // and behaves exactly as before. This is what keeps the page usable for
@@ -59,9 +55,33 @@ export function BookingForm({
   // renders at once, instead of rendering all of them unconditionally.
   const [viewingRoomId, setViewingRoomId] = useState<string | null>(rooms.length === 1 ? rooms[0]!.id : null);
 
+  // Refresh derived availability while this tab is visible. A slightly
+  // slower cadence avoids repeated full server renders in dormant tabs.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") router.refresh();
+    }, 20_000);
+    return () => clearInterval(timer);
+  }, [router]);
+
+  // If a different customer takes a bedspace that this visitor selected,
+  // remove it from their draft instead of leaving a stale selected tile.
+  useEffect(() => {
+    const availableIds = new Set(
+      rooms.flatMap((room) => room.bedspaces.filter((bedspace) => bedspace.status === "AVAILABLE").map((bedspace) => bedspace.id)),
+    );
+    setSelected((prev) => prev.filter((slot) => !slot.bedspaceId || availableIds.has(slot.bedspaceId)));
+    setEntireRoomId((prev) => {
+      if (!prev) return null;
+      const room = rooms.find((candidate) => candidate.id === prev);
+      return room && room.bedspaces.length > 0 && room.bedspaces.every((bedspace) => bedspace.status === "AVAILABLE") ? prev : null;
+    });
+  }, [rooms]);
+
   const usesBedspacePicker = mode === "SHARED" && customerSelectsBedspace;
-  const usesAutoCount = (mode === "SHARED" && !customerSelectsBedspace) || (mode === "PRIVATE" && !customerSelectsRoom);
-  const usesUnitPicker = mode === "PRIVATE" && customerSelectsRoom;
+  const usesAutoCount = mode === "SHARED" && !customerSelectsBedspace;
+  // A private listing is already the accommodation the guest selected. The
+  // underlying unit is allocated automatically, so there is no second picker.
   const needsRoomPicker = usesBedspacePicker && rooms.length > 1;
 
   const occupantSlots: OccupantDraft[] = usesBedspacePicker ? selected : Array.from({ length: autoCount }, () => ({}));
@@ -85,7 +105,7 @@ export function BookingForm({
     setSelected(room.bedspaces.map((b) => ({ bedspaceId: b.id, roomLabel: room.name })));
   }
 
-  const canSubmit = usesBedspacePicker ? occupantSlots.length > 0 : usesUnitPicker ? !!selectedUnitId : autoCount > 0;
+  const canSubmit = usesBedspacePicker ? occupantSlots.length > 0 : autoCount > 0;
   const viewingRoom = rooms.find((r) => r.id === viewingRoomId);
 
   return (
@@ -93,7 +113,6 @@ export function BookingForm({
       <input type="hidden" name="categoryId" value={categoryId} />
       <input type="hidden" name="occupantCount" value={occupantSlots.length} />
       {entireRoomId && <input type="hidden" name="entireRoomId" value={entireRoomId} />}
-      {usesUnitPicker && selectedUnitId && <input type="hidden" name="unitId" value={selectedUnitId} />}
 
       {usesBedspacePicker && needsRoomPicker && !viewingRoom && (
         <div className="stack">
@@ -140,7 +159,7 @@ export function BookingForm({
                 <h3>{room.name}</h3>
                 <div className="bed-row">
                   {room.bedspaces.map((b) => {
-                    const isSelected = selected.some((s) => s.bedspaceId === b.id);
+                    const isSelected = b.status === "AVAILABLE" && selected.some((s) => s.bedspaceId === b.id);
                     const state = isSelected ? "selected" : b.status === "AVAILABLE" ? "available" : b.status.toLowerCase();
                     return (
                       <Bedspace
@@ -166,43 +185,14 @@ export function BookingForm({
         </div>
       )}
 
-      {usesUnitPicker && (
-        <div className="stack">
-          <h2>Choose a unit</h2>
-          <div className="grid">
-            {units.map((u) => (
-              <button
-                type="button"
-                key={u.id}
-                onClick={() => setSelectedUnitId(u.id)}
-                className="listing-card"
-                style={{
-                  textAlign: "left",
-                  cursor: "pointer",
-                  borderColor: selectedUnitId === u.id ? "var(--color-brand)" : undefined,
-                  borderWidth: selectedUnitId === u.id ? "2px" : undefined,
-                  font: "inherit",
-                }}
-              >
-                <ImageThumb src={u.imageUrl} alt={u.name} />
-                <div className="listing-body">
-                  <h3>{u.name}</h3>
-                  <p className="listing-meta">Sleeps up to {u.capacity}</p>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {(usesAutoCount || usesUnitPicker) && (
+      {usesAutoCount && (
         <div className="field" style={{ maxWidth: "200px" }}>
           <label htmlFor="autoCount">Number of people</label>
           <input
             id="autoCount"
             type="number"
             min={1}
-            max={usesUnitPicker ? units.find((u) => u.id === selectedUnitId)?.capacity ?? 20 : 20}
+            max={20}
             value={autoCount}
             onChange={(e) => setAutoCount(Math.max(1, Number(e.target.value) || 1))}
           />
@@ -210,59 +200,42 @@ export function BookingForm({
       )}
 
       {occupantSlots.length > 0 && (
+        <div className="card stack booking-details-card">
+          <h2>Your details</h2>
+          <div className="field">
+            <label htmlFor="bookerName">Full name</label>
+            <input id="bookerName" name="bookerName" required autoComplete="name" value={bookerName} onChange={(event) => setBookerName(event.target.value)} />
+          </div>
+          <div className="field">
+            <label htmlFor="bookerPhone">Phone</label>
+            <input id="bookerPhone" name="bookerPhone" type="tel" required autoComplete="tel" value={bookerPhone} onChange={(event) => setBookerPhone(event.target.value)} />
+          </div>
+          <div className="field">
+            <label htmlFor="bookerEmail">Email</label>
+            <input id="bookerEmail" name="bookerEmail" type="email" required autoComplete="email" value={bookerEmail} onChange={(event) => setBookerEmail(event.target.value)} />
+          </div>
+          <label className="gift-booking-toggle"><input type="checkbox" checked={isGiftBooking} onChange={(event) => setIsGiftBooking(event.target.checked)} /> <span><strong>Booking for someone else?</strong><small>Enter their details so the reservation is under their name.</small></span></label>
+          {!isGiftBooking && occupantSlots.length === 1 && <div className="field"><label htmlFor="bookerGender">Your gender</label><select id="bookerGender" required value={bookerGender} onChange={(event) => setBookerGender(event.target.value as "MALE" | "FEMALE" | "")}><option value="" disabled>Select</option><option value="MALE">Male</option><option value="FEMALE">Female</option></select></div>}
+        </div>
+      )}
+
+      {occupantSlots.length > 0 && (isGiftBooking || occupantSlots.length > 1) && (
         <div className="stack">
           <h2>Occupant details</h2>
           {occupantSlots.map((slot, i) => (
-            <div key={slot.bedspaceId ?? i} className="card stack">
-              <h3>
-                Occupant {i + 1}
-                {slot.roomLabel ? ` — ${slot.roomLabel}` : ""}
-              </h3>
+            <div key={slot.bedspaceId ?? i} className="card stack booking-details-card">
+              <h3>Occupant {i + 1}{slot.roomLabel ? ` — ${slot.roomLabel}` : ""}</h3>
               {slot.bedspaceId && <input type="hidden" name={`occupant_bedspace_${i}`} value={slot.bedspaceId} />}
-              <div className="field">
-                <label htmlFor={`occupant_name_${i}`}>Full name</label>
-                <input id={`occupant_name_${i}`} name={`occupant_name_${i}`} required autoComplete="name" />
-              </div>
-              <div className="field">
-                <label htmlFor={`occupant_gender_${i}`}>Gender</label>
-                <select id={`occupant_gender_${i}`} name={`occupant_gender_${i}`} required defaultValue="">
-                  <option value="" disabled>
-                    Select
-                  </option>
-                  <option value="MALE">Male</option>
-                  <option value="FEMALE">Female</option>
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor={`occupant_phone_${i}`}>Phone</label>
-                <input id={`occupant_phone_${i}`} name={`occupant_phone_${i}`} type="tel" autoComplete="tel" />
-              </div>
-              <div className="field">
-                <label htmlFor={`occupant_email_${i}`}>Email</label>
-                <input id={`occupant_email_${i}`} name={`occupant_email_${i}`} type="email" autoComplete="email" />
-              </div>
+              <div className="field"><label htmlFor={`occupant_name_${i}`}>Full name</label><input id={`occupant_name_${i}`} name={`occupant_name_${i}`} required autoComplete="name" /></div>
+              <div className="field"><label htmlFor={`occupant_gender_${i}`}>Gender</label><select id={`occupant_gender_${i}`} name={`occupant_gender_${i}`} required defaultValue=""><option value="" disabled>Select</option><option value="MALE">Male</option><option value="FEMALE">Female</option></select></div>
+              <div className="field"><label htmlFor={`occupant_phone_${i}`}>Phone</label><input id={`occupant_phone_${i}`} name={`occupant_phone_${i}`} type="tel" autoComplete="tel" /></div>
+              <div className="field"><label htmlFor={`occupant_email_${i}`}>Email{isGiftBooking ? " (for the gift notification)" : ""}</label><input id={`occupant_email_${i}`} name={`occupant_email_${i}`} type="email" autoComplete="email" required={isGiftBooking} /></div>
             </div>
           ))}
         </div>
       )}
 
-      {occupantSlots.length > 0 && (
-        <div className="card stack">
-          <h2>Your details</h2>
-          <div className="field">
-            <label htmlFor="bookerName">Full name</label>
-            <input id="bookerName" name="bookerName" required autoComplete="name" />
-          </div>
-          <div className="field">
-            <label htmlFor="bookerPhone">Phone</label>
-            <input id="bookerPhone" name="bookerPhone" type="tel" required autoComplete="tel" />
-          </div>
-          <div className="field">
-            <label htmlFor="bookerEmail">Email</label>
-            <input id="bookerEmail" name="bookerEmail" type="email" required autoComplete="email" />
-          </div>
-        </div>
-      )}
+      {occupantSlots.length === 1 && !isGiftBooking && <><input type="hidden" name="occupant_name_0" value={bookerName} /><input type="hidden" name="occupant_gender_0" value={bookerGender} /><input type="hidden" name="occupant_phone_0" value={bookerPhone} /><input type="hidden" name="occupant_email_0" value={bookerEmail} /></>}
 
       <button className="btn" type="submit" disabled={!canSubmit}>
         Review and reserve

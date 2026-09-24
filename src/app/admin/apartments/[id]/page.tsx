@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AdminNav, ErrorBanner } from "@/components/AdminChrome";
+import { ErrorBanner } from "@/components/AdminChrome";
 import { Badge } from "@/components/Badge";
 import { ImageThumb } from "@/components/ImageThumb";
+import { ImageUploadInput } from "@/components/ImageUploadInput";
+import { ApartmentStayDates } from "@/components/ApartmentStayDates";
 import { requireActor } from "@/lib/auth/require";
 import { getApartmentDetail } from "@/lib/inventory/apartments";
 import { listFacilities } from "@/lib/inventory/facilities";
@@ -16,6 +18,7 @@ const STATUS_LABEL: Record<string, string> = {
   MAINTENANCE: "Maintenance",
   RETIRED: "Retired",
 };
+const BED_SPECIFICATIONS = ["6x6", "4x6", "Single Bed", "Double Bed", "Bunk Bed"];
 
 export default async function ApartmentDetailPage({
   params,
@@ -31,12 +34,11 @@ export default async function ApartmentDetailPage({
   if (!detail) notFound();
   const { unit, category, facilityIds } = detail;
   const lodge = await getLodge(category.lodgeId);
-  const allFacilities = category.mode === "PRIVATE" ? await listFacilities() : [];
+  const allFacilities = category.mode === "PRIVATE" ? (await listFacilities()).filter((facility) => facility.name.trim().toLowerCase() !== "bed") : [];
   const selectedFacilityIds = new Set(facilityIds);
 
   return (
     <div className="stack">
-      <AdminNav />
       <p>
         <Link href={`/admin/lodges/${category.lodgeId}`}>&larr; {lodge?.name ?? "Lodge"}</Link>
       </p>
@@ -56,7 +58,7 @@ export default async function ApartmentDetailPage({
             <input id="name" name="name" defaultValue={unit.name} required />
           </div>
           <div className="field">
-            <label htmlFor="priceNaira">Price {category.pricingModel === "PER_PERSON" ? "(per bedspace)" : "(per unit)"}</label>
+            <label htmlFor="priceNaira">Total listed price for this stay {category.pricingModel === "PER_PERSON" ? "(per bedspace, ₦)" : "(per apartment, ₦)"}</label>
             <input
               id="priceNaira"
               name="priceNaira"
@@ -67,6 +69,7 @@ export default async function ApartmentDetailPage({
               required
             />
           </div>
+          <ApartmentStayDates checkInDate={category.checkInDate} checkOutDate={category.checkOutDate} />
           <button className="btn" type="submit">
             Save
           </button>
@@ -98,7 +101,7 @@ export default async function ApartmentDetailPage({
           <input type="hidden" name="intent" value="images" />
           <div className="field">
             <label htmlFor="images">Add photos</label>
-            <input id="images" name="images" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple />
+            <ImageUploadInput id="images" />
           </div>
           <button className="btn secondary" type="submit">
             Save photos
@@ -111,7 +114,7 @@ export default async function ApartmentDetailPage({
           <h2>Amenities</h2>
           <form method="post" action={`/api/admin/apartments/${unit.id}`} className="stack">
             <input type="hidden" name="intent" value="facilities" />
-            {allFacilities.map((f) => (
+            {allFacilities.filter((f) => !["air conditioning", "bed"].includes(f.name.trim().toLowerCase())).map((f) => (
               <label key={f.id} style={{ display: "flex", gap: "8px", alignItems: "center", fontWeight: 400 }}>
                 <input type="checkbox" name="facilityIds" value={f.id} defaultChecked={selectedFacilityIds.has(f.id)} />
                 {f.name}
@@ -123,6 +126,25 @@ export default async function ApartmentDetailPage({
           </form>
         </div>
       )}
+
+      <div className="card stack">
+        <h2>Bed specifications</h2>
+        <form method="post" action={`/api/admin/apartments/${unit.id}`} className="stack">
+          <input type="hidden" name="intent" value="bed-specifications" />
+          <fieldset className="checkbox-field">
+            <legend>Select all bed types and sizes that apply</legend>
+            <div className="checkbox-grid">
+              {BED_SPECIFICATIONS.map((specification) => (
+                <label className="checkbox-option" key={specification}>
+                  <input type="checkbox" name="bedSpecifications" value={specification} defaultChecked={unit.bedSpecifications.includes(specification)} />
+                  <span>{specification}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <button className="btn secondary" type="submit">Save bed specifications</button>
+        </form>
+      </div>
 
       {category.mode === "SHARED" && detail.rooms.length > 0 && (
         <div className="card stack">

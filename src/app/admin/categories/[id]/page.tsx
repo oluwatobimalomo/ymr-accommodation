@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AdminNav, ErrorBanner } from "@/components/AdminChrome";
+import { ErrorBanner } from "@/components/AdminChrome";
 import { ImageThumb } from "@/components/ImageThumb";
 import { requireActor } from "@/lib/auth/require";
 import { can } from "@/lib/authz/authorize";
 import { getCategory } from "@/lib/inventory/categories";
 import { getLodge } from "@/lib/inventory/lodges";
 import { listUnitsForCategory } from "@/lib/inventory/units";
+import { formatNaira } from "@/lib/format-currency";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,6 @@ export default async function CategoryDetailPage({
 
   return (
     <div className="stack">
-      <AdminNav />
       <p>
         <Link href={`/admin/lodges/${category.lodgeId}`}>&larr; {lodge?.name ?? "Lodge"}</Link>
       </p>
@@ -85,11 +85,11 @@ export default async function CategoryDetailPage({
       {canPrice && (
         <div className="card stack">
           <h2>Pricing</h2>
-          <p>Current price: {(category.defaultPriceMinor / 100).toLocaleString()} per {category.pricingModel === "PER_PERSON" ? "person" : "unit"}</p>
+          <p>Current price: {formatNaira(category.defaultPriceMinor)} per {category.pricingModel === "PER_PERSON" ? "person" : "unit"}</p>
           <form method="post" action={`/api/admin/categories/${category.id}?lodgeId=${lodgeId ?? category.lodgeId}`} className="stack">
             <input type="hidden" name="intent" value="pricing" />
             <div className="field">
-              <label htmlFor="priceNaira">New price</label>
+              <label htmlFor="priceNaira">New price (₦)</label>
               <input id="priceNaira" name="priceNaira" type="number" min="0" step="0.01" defaultValue={category.defaultPriceMinor / 100} required />
             </div>
             <button className="btn secondary" type="submit">

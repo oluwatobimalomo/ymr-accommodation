@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { ImageUploadInput } from "@/components/ImageUploadInput";
+import { ApartmentStayDates } from "@/components/ApartmentStayDates";
 
 interface Facility {
   id: string;
@@ -11,13 +13,17 @@ interface Props {
   lodgeId: string;
   facilities: Facility[];
   action: string;
+  defaultCheckInDate?: string | null;
+  defaultCheckOutDate?: string | null;
 }
 
-export function ApartmentForm({ lodgeId, facilities, action }: Props) {
+const BED_SPECIFICATIONS = ["6x6", "4x6", "Single Bed", "Double Bed", "Bunk Bed"];
+
+export function ApartmentForm({ lodgeId, facilities, action, defaultCheckInDate, defaultCheckOutDate }: Props) {
   const [mode, setMode] = useState<"PRIVATE" | "SHARED">("PRIVATE");
 
   return (
-    <form method="post" action={action} encType="multipart/form-data" className="stack">
+    <form method="post" action={action} encType="multipart/form-data" className="stack apartment-form">
       <input type="hidden" name="lodgeId" value={lodgeId} />
       <input type="hidden" name="mode" value={mode} />
 
@@ -25,6 +31,8 @@ export function ApartmentForm({ lodgeId, facilities, action }: Props) {
         <label htmlFor="name">Apartment name</label>
         <input id="name" name="name" required placeholder="Chalet A" />
       </div>
+
+      <ApartmentStayDates checkInDate={defaultCheckInDate} checkOutDate={defaultCheckOutDate} />
 
       <div className="field">
         <label htmlFor="mode-select">Mode</label>
@@ -37,20 +45,9 @@ export function ApartmentForm({ lodgeId, facilities, action }: Props) {
       {mode === "PRIVATE" ? (
         <>
           <div className="field">
-            <label htmlFor="priceNaira">Price</label>
+            <label htmlFor="priceNaira">Total apartment price for this stay (₦)</label>
             <input id="priceNaira" name="priceNaira" type="number" min="0" step="0.01" required />
           </div>
-          {facilities.length > 0 && (
-            <div className="field">
-              <label>Amenities</label>
-              {facilities.map((f) => (
-                <label key={f.id} style={{ display: "flex", gap: "8px", alignItems: "center", fontWeight: 400 }}>
-                  <input type="checkbox" name="facilityIds" value={f.id} />
-                  {f.name}
-                </label>
-              ))}
-            </div>
-          )}
         </>
       ) : (
         <>
@@ -75,15 +72,42 @@ export function ApartmentForm({ lodgeId, facilities, action }: Props) {
             </p>
           </div>
           <div className="field">
-            <label htmlFor="priceNaira-shared">Price per bedspace</label>
+            <label htmlFor="priceNaira-shared">Total price per bedspace for this stay (₦)</label>
             <input id="priceNaira-shared" name="priceNaira" type="number" min="0" step="0.01" required />
           </div>
         </>
       )}
 
+      {facilities.length > 0 && (
+        <fieldset className="checkbox-field">
+          <legend>Facilities</legend>
+          <div className="checkbox-grid">
+            {facilities.filter((f) => !["air conditioning", "bed"].includes(f.name.trim().toLowerCase())).map((f) => (
+              <label className="checkbox-option" key={f.id}>
+                <input type="checkbox" name="facilityIds" value={f.id} />
+                <span>{f.name}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
+
+      <fieldset className="checkbox-field">
+        <legend>Bed specifications</legend>
+        <p className="listing-meta">Choose every bed type or size available in this apartment.</p>
+        <div className="checkbox-grid">
+          {BED_SPECIFICATIONS.map((specification) => (
+            <label className="checkbox-option" key={specification}>
+              <input type="checkbox" name="bedSpecifications" value={specification} />
+              <span>{specification}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
       <div className="field">
         <label htmlFor="images">Photos</label>
-        <input id="images" name="images" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple />
+        <ImageUploadInput id="images" />
       </div>
 
       <button className="btn" type="submit">

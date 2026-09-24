@@ -24,6 +24,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return;
     }
 
+    if (intent === "bed-specifications") {
+      await updateApartment(actor, id, { bedSpecifications: form.getAll("bedSpecifications").map(String) });
+      return;
+    }
+
     if (intent === "add-bedspaces") {
       const roomId = String(form.get("roomId") ?? "");
       await addBedspacesToRoom(actor, roomId, Number(form.get("addCount") ?? 0));
@@ -45,6 +50,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await updateApartment(actor, id, {
       name: String(form.get("name") ?? ""),
       priceNaira: Number(form.get("priceNaira") ?? 0),
+      checkInDate: String(form.get("checkInDate") ?? ""),
+      checkOutDate: String(form.get("checkOutDate") ?? ""),
+      bedSpecifications: form.getAll("bedSpecifications").map(String),
     });
   });
 }

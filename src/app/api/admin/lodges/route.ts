@@ -3,7 +3,7 @@ import { createLodge } from "@/lib/inventory/lodges";
 import { filesToDataUris } from "@/lib/uploads";
 
 export async function POST(request: Request) {
-  return handleAdminAction(request, "/admin/lodges", async (form, actor) => {
+  return handleAdminAction(request, "/admin/lodges/new", async (form, actor) => {
     const files = form.getAll("images").filter((f): f is File => f instanceof File);
     const images = await filesToDataUris(files);
     await createLodge(actor, {
@@ -16,5 +16,5 @@ export async function POST(request: Request) {
       contactPhone: String(form.get("contactPhone") ?? ""),
       images,
     });
-  });
+  }, "/admin/lodges");
 }

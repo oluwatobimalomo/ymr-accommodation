@@ -5,6 +5,8 @@ import { BookingStatusTracker } from "@/components/BookingStatusTracker";
 import { getBookingByReference } from "@/lib/booking/queries";
 import { confirmPaymentFromVerifiedResult } from "@/lib/payments/confirm-payment";
 import { verifyTransaction } from "@/lib/payments/paystack";
+import { formatNaira } from "@/lib/format-currency";
+import { formatDateOnly } from "@/lib/format-date";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +58,7 @@ export default async function BookingConfirmationPage({
   }
 
   if (!data) notFound();
-  const { booking, occupants, lodgeName, categoryName } = data;
+  const { booking, occupants, lodgeName, categoryName, checkInDate, checkOutDate } = data;
 
   // Security: a booking reference alone (e.g. YMR26-ACM-00003) is
   // sequential and guessable by design (the brief requires this exact
@@ -93,64 +95,35 @@ export default async function BookingConfirmationPage({
   const paymentConfigured = !!process.env.PAYSTACK_SECRET_KEY;
 
   return (
-    <div className="stack">
-      <h1>{booking.paymentStatus === "PAID" ? "Booking confirmed" : "Reservation held"}</h1>
-      <div className="card stack">
-        <div>
-          <p className="listing-meta" style={{ margin: 0 }}>
-            {lodgeName}
-            {categoryName ? ` · ${categoryName}` : ""}
-          </p>
-          <p style={{ margin: "2px 0 0" }}>
-            <strong style={{ fontSize: "1.5rem" }}>{booking.reference}</strong>
-          </p>
-        </div>
+    <div className="booking-ticket-page stack">
+      <header className={`booking-ticket-hero${booking.paymentStatus === "PAID" ? " is-paid" : ""}`}>
+        <div className="ticket-confirmation-mark" aria-hidden="true">{booking.paymentStatus === "PAID" ? "✓" : "•"}</div>
+        <div><span className="eyebrow">YMR Accommodation · Booking update</span><h1>{booking.paymentStatus === "PAID" ? "Your stay is confirmed" : "Your reservation is held"}</h1>
+          <p>{booking.paymentStatus === "PAID" ? "Your accommodation details are ready. Keep this ticket for check-in." : "We’re waiting for payment confirmation. Your reservation details are below."}</p></div>
+      </header>
 
+      {!paymentConfigured && booking.paymentStatus === "PENDING" && <div className="alert" role="status">Payment is not configured on this deployment. Your accommodation is held temporarily; a member of the team will follow up. Keep your booking reference.</div>}
+      {paymentConfigured && booking.paymentStatus === "PENDING" && <div className="alert" role="status">We&rsquo;re waiting for payment confirmation. If you completed payment, the status will update once confirmed.</div>}
+
+      <section className={`booking-ticket-card${booking.paymentStatus === "PAID" ? " is-paid" : ""}`} aria-label="Booking ticket">
+        <div className="ticket-card-topline"><span>BOOKING TICKET</span><Badge tone={booking.paymentStatus === "PAID" ? "brand" : "default"}>{PAYMENT_LABEL[booking.paymentStatus]}</Badge></div>
+        <div className="ticket-reference-row"><div><span className="ticket-label">Ticket ID</span><strong className="ticket-reference">{booking.reference}</strong></div><div className="ticket-total"><span className="ticket-label">Total amount</span><strong>{formatNaira(booking.amountMinor)}</strong></div></div>
         <BookingStatusTracker paymentStatus={booking.paymentStatus} accommodationStatus={booking.accommodationStatus} />
-
-        <div className="badge-row">
-          <Badge tone={booking.paymentStatus === "PAID" ? "brand" : "default"}>
-            Payment: {PAYMENT_LABEL[booking.paymentStatus]}
-          </Badge>
+        <div className="ticket-stay-grid">
+          <div><span className="ticket-label">Lodge</span><strong>{lodgeName || "Accommodation"}</strong></div>
+          <div><span className="ticket-label">Apartment</span><strong>{categoryName || "Assigned accommodation"}</strong></div>
+          <div><span className="ticket-label">Check-in</span><strong>{formatDateOnly(checkInDate) || "To be confirmed"}</strong></div>
+          <div><span className="ticket-label">Check-out</span><strong>{formatDateOnly(checkOutDate) || "To be confirmed"}</strong></div>
         </div>
+      </section>
 
-        <p style={{ margin: 0, fontWeight: 600 }}>
-          {(booking.amountMinor / 100).toLocaleString()} {booking.currency}
-        </p>
+      <div className="booking-ticket-lower">
+        <section className="card ticket-occupants">
+          <div className="ticket-section-heading"><div><span className="eyebrow">Guest details</span><h2>Occupants</h2></div><span>{occupants.length} guest{occupants.length === 1 ? "" : "s"}</span></div>
+          <div className="ticket-guest-list">{occupants.map((occupant, index) => <div className="ticket-guest" key={occupant.id}><span className="ticket-guest-number">{String(index + 1).padStart(2, "0")}</span><strong>{occupant.name}</strong><span>{occupant.gender.toLowerCase()}</span></div>)}</div>
+        </section>
+        <aside className="ticket-next-step"><span className="eyebrow">Before you arrive</span><h2>Keep your Ticket ID handy.</h2><p>Use the booking reference and the phone number on your reservation if you need to look up your booking or contact the accommodation team.</p><div className="ticket-actions"><a className="btn" href="/check-booking">Manage booking</a><a className="ticket-support-link" href="/support">Need help? Contact support</a></div></aside>
       </div>
-
-      {!paymentConfigured && booking.paymentStatus === "PENDING" && (
-        <div
-          className="alert"
-          role="status"
-          style={{ background: "var(--color-info-soft)", borderColor: "var(--color-info)", color: "var(--color-info)" }}
-        >
-          Payment is not yet configured on this deployment. Your bedspace/unit is held temporarily; a member of the
-          team will follow up to complete payment. Please keep your booking reference.
-        </div>
-      )}
-
-      {paymentConfigured && booking.paymentStatus === "PENDING" && (
-        <div className="alert" role="status">
-          We&rsquo;re still waiting for payment confirmation. If you completed payment, this page will update shortly
-          — you can also check back later using your reference.
-        </div>
-      )}
-
-      <h2>Occupants</h2>
-      <ul>
-        {occupants.map((o) => (
-          <li key={o.id}>
-            {o.name} ({o.gender.toLowerCase()})
-          </li>
-        ))}
-      </ul>
-
-      <p>
-        <a className="btn secondary" href="/check-booking">
-          Check this booking later
-        </a>
-      </p>
     </div>
   );
 }

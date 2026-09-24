@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AdminNav, ErrorBanner } from "@/components/AdminChrome";
+import { ErrorBanner } from "@/components/AdminChrome";
 import { requireActor } from "@/lib/auth/require";
 import { can } from "@/lib/authz/authorize";
 import { listBedspacesForRoom } from "@/lib/inventory/bedspaces";
@@ -36,7 +36,6 @@ export default async function RoomDetailPage({
 
   return (
     <div className="stack">
-      <AdminNav />
       <p>
         <Link href={`/admin/units/${room.unitId}`}>&larr; {unit?.name ?? "Unit"}</Link>
       </p>

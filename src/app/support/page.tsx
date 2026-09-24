@@ -1,4 +1,5 @@
 import { ErrorBanner } from "@/components/AdminChrome";
+import { listActiveLodges } from "@/lib/booking/queries";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Support" };
@@ -12,26 +13,32 @@ export default async function SupportPage({
 
   if (reference) {
     return (
-      <div className="stack">
-        <h1>Support request received</h1>
-        <div className="card stack">
+      <div className="support-page stack">
+        <div className="page-intro"><span className="eyebrow">We’re here to help</span><h1>Request received</h1></div>
+        <div className="card stack support-success">
           <p style={{ margin: 0 }}>
             Your reference<br />
             <strong style={{ fontSize: "1.4rem" }}>{reference}</strong>
           </p>
-          <p style={{ margin: 0 }}>We&rsquo;ll get back to you by email. Keep this reference for follow-up.</p>
+          <p style={{ margin: 0 }}>Your request has been sent to the accommodation team. A coordinator will contact you using your selected phone or WhatsApp preference. Keep this reference for your records.</p>
         </div>
       </div>
     );
   }
+  const lodges = await listActiveLodges();
 
   return (
-    <div className="stack">
-      <h1>Support</h1>
-      <p>Have a question about your booking, payment, or accommodation? Send us a message.</p>
+    <div className="support-page stack">
+      <div className="page-intro support-intro">
+        <span className="eyebrow">Guest care</span>
+        <h1>How can we help?</h1>
+        <p>Send a note to our accommodation team. We’ll route it to the right lodge coordinator and contact you using your preferred method.</p>
+      </div>
       <ErrorBanner error={error} />
 
-      <form method="post" action="/api/support/create" className="card stack" style={{ maxWidth: 480 }}>
+      <div className="support-content">
+      <form method="post" action="/api/support/create" className="card stack support-form">
+        <div className="support-fields">
         <div className="field">
           <label htmlFor="customerName">Your name</label>
           <input id="customerName" name="customerName" required autoComplete="name" />
@@ -41,12 +48,27 @@ export default async function SupportPage({
           <input id="customerEmail" name="customerEmail" type="email" required autoComplete="email" />
         </div>
         <div className="field">
-          <label htmlFor="customerPhone">Phone (optional)</label>
-          <input id="customerPhone" name="customerPhone" type="tel" autoComplete="tel" />
+          <label htmlFor="customerPhone">Phone number for follow-up</label>
+          <input id="customerPhone" name="customerPhone" type="tel" required autoComplete="tel" placeholder="+234…" />
+        </div>
+        <div className="field">
+          <label htmlFor="contactPreference">How should the lodge coordinator contact you?</label>
+          <select id="contactPreference" name="contactPreference" required defaultValue="WHATSAPP">
+            <option value="CALL">Phone call</option>
+            <option value="WHATSAPP">WhatsApp</option>
+          </select>
         </div>
         <div className="field">
           <label htmlFor="bookingReference">Booking reference (if applicable)</label>
-          <input id="bookingReference" name="bookingReference" placeholder="YMR26-ACM-00001" />
+          <input id="bookingReference" name="bookingReference" placeholder="YMR26-WH-569402CF" />
+        </div>
+        <div className="field">
+          <label htmlFor="lodgeId">Lodge</label>
+          <select id="lodgeId" name="lodgeId" defaultValue="">
+            <option value="">General accommodation support</option>
+            {lodges.map((lodge) => <option key={lodge.id} value={lodge.id}>{lodge.name}</option>)}
+          </select>
+          <p className="listing-meta">If you provide a booking reference, we&rsquo;ll route this to the lodge on that booking.</p>
         </div>
         <div className="field">
           <label htmlFor="category">Category</label>
@@ -65,14 +87,23 @@ export default async function SupportPage({
           <label htmlFor="subject">Subject</label>
           <input id="subject" name="subject" required />
         </div>
-        <div className="field">
+        <div className="field support-message-field">
           <label htmlFor="description">Message</label>
           <textarea id="description" name="description" required rows={5} />
+        </div>
         </div>
         <button className="btn" type="submit">
           Send message
         </button>
       </form>
+      <aside className="support-aside card stack">
+        <span className="support-aside-icon" aria-hidden="true">✦</span>
+        <h2>Personal help, from people who know your stay.</h2>
+        <p>For booking questions, include your booking reference so we can connect you with the right lodge.</p>
+        <div className="support-assurance"><strong>What happens next?</strong><span>A coordinator reviews your request and follows up by call or WhatsApp.</span></div>
+        <a className="support-aside-link" href="/faq">Browse frequently asked questions <span aria-hidden="true">→</span></a>
+      </aside>
+      </div>
     </div>
   );
 }

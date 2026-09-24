@@ -88,7 +88,7 @@ export async function createBooking(input: CreateBookingInput): Promise<CreateBo
       category.pricingModel === "PER_PERSON" ? category.defaultPriceMinor * occupantCount : category.defaultPriceMinor;
 
     const assignments = await resolveAssignments(tx, category, input, occupantCount, event.holdMinutes);
-    const reference = await nextBookingReference(tx, event.id);
+    const reference = await nextBookingReference(tx, event.id, lodge.name);
 
     const [booking] = await tx
       .insert(bookings)
