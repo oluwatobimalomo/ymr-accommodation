@@ -7,6 +7,11 @@ import { safeErrorMessage } from "@/lib/safe-error";
 export async function POST(request: Request) {
   if (!isSameOrigin(request)) return NextResponse.json({ error: "Bad origin" }, { status: 403 });
   try {
+    // Do not create a pending hold when there is no payment path for the user
+    // to complete. This used to leave reservations stuck in the bag flow.
+    if (!process.env.PAYSTACK_SECRET_KEY) {
+      return NextResponse.json({ error: "Online payment is temporarily unavailable. Please try again later." }, { status: 503 });
+    }
     const body = await request.json() as Record<string, unknown>;
     const rawItems = Array.isArray(body.items) ? body.items : [];
     const items = rawItems.map((raw) => {
@@ -45,9 +50,6 @@ export async function POST(request: Request) {
       giftRecipient,
       items,
     });
-    if (!process.env.PAYSTACK_SECRET_KEY) {
-      return NextResponse.json({ reference: order.reference, redirectUrl: `/booking/reference/${encodeURIComponent(order.reference)}` });
-    }
     const callbackUrl = new URL(`/booking/reference/${encodeURIComponent(order.reference)}`, request.url).toString();
     const transaction = await initializeTransaction({
       email: String(body.bookerEmail ?? "").trim(),

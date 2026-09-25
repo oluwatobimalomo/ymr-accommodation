@@ -4,7 +4,7 @@ const PAYSTACK_BASE_URL = "https://api.paystack.co";
 
 function secretKey(): string {
   const key = process.env.PAYSTACK_SECRET_KEY;
-  if (!key) throw new Error("Payment is not configured yet. Set PAYSTACK_SECRET_KEY.");
+  if (!key) throw new Error("Online payment is temporarily unavailable. Please try again later.");
   return key;
 }
 

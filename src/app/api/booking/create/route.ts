@@ -12,6 +12,10 @@ export async function POST(request: Request) {
   const occupantCount = Number(form.get("occupantCount") ?? 0);
   const backTo = `/booking/${categoryId}`;
 
+  if (!process.env.PAYSTACK_SECRET_KEY) {
+    return NextResponse.redirect(new URL(`${backTo}?error=${encodeURIComponent("Online payment is temporarily unavailable. Please try again later.")}`, request.url), 303);
+  }
+
   if (!categoryId || occupantCount < 1) {
     return NextResponse.redirect(new URL(`${backTo}?error=${encodeURIComponent("Please complete the form.")}`, request.url), 303);
   }
@@ -45,13 +49,6 @@ export async function POST(request: Request) {
       entireRoomId: (form.get("entireRoomId") as string) || undefined,
       unitId: (form.get("unitId") as string) || undefined,
     });
-
-    if (!process.env.PAYSTACK_SECRET_KEY) {
-      // Payment not configured yet (e.g. local dev before keys are added) -
-      // the booking still exists, held, at PENDING; just skip straight to
-      // the confirmation page rather than failing the whole booking.
-      return NextResponse.redirect(new URL(`/booking/reference/${result.reference}`, request.url), 303);
-    }
 
     const callbackUrl = new URL(`/booking/reference/${result.reference}`, request.url).toString();
     const bookerEmail = String(form.get("bookerEmail") ?? "");

@@ -90,8 +90,6 @@ export default async function BookingConfirmationPage({
     }
   }
 
-  const paymentConfigured = !!process.env.PAYSTACK_SECRET_KEY;
-
   return (
     <div className="booking-ticket-page stack">
       {verifiedPaystackReturn && booking.paymentStatus === "PAID" && <ClearBagOnSuccess />}
@@ -103,8 +101,7 @@ export default async function BookingConfirmationPage({
           <p>{booking.paymentStatus === "PAID" ? "Your accommodation details are ready. Keep this ticket for check-in." : "We’re waiting for payment confirmation. Your reservation details are below."}</p></div>
       </header>
 
-      {!paymentConfigured && booking.paymentStatus === "PENDING" && <div className="alert" role="status">Payment is not configured on this deployment. Your accommodation is held temporarily; a member of the team will follow up. Keep your booking reference.</div>}
-      {paymentConfigured && booking.paymentStatus === "PENDING" && <div className="alert" role="status">We&rsquo;re waiting for payment confirmation. If you completed payment, the status will update once confirmed.</div>}
+      {booking.paymentStatus === "PENDING" && <div className="alert" role="status">Your payment is still being confirmed. If you completed payment, this page will update once it is verified. If you need help, contact Support with your booking reference.</div>}
 
       <section className={`booking-ticket-card${booking.paymentStatus === "PAID" ? " is-paid" : ""}`} aria-label="Booking ticket">
         <div className="ticket-card-topline"><span>BOOKING TICKET</span><Badge tone={booking.paymentStatus === "PAID" ? "brand" : "default"}>{PAYMENT_LABEL[booking.paymentStatus]}</Badge></div>

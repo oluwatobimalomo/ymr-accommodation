@@ -24,6 +24,21 @@ function coordinatorValue(value: string | null | undefined, lodgeName: string | 
   return text.slice(lodge.length).replace(/^\s*[:|–—-]\s*/, "").trim();
 }
 
+type GuestOperationAudit = { entityId: string | null; action: string; occurredAt: Date };
+
+async function getGuestOperationAudit(db: ReturnType<typeof getDb>, bookingIds: string[]): Promise<GuestOperationAudit[]> {
+  if (bookingIds.length === 0) return [];
+  try {
+    return await db.select({ entityId: auditLogs.entityId, action: auditLogs.action, occurredAt: auditLogs.occurredAt })
+      .from(auditLogs)
+      .where(and(inArray(auditLogs.entityId, bookingIds), inArray(auditLogs.action, ["booking.checked_in", "booking.checked_out", "booking.checkin_overridden"])));
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String(error.code) : "unknown";
+    console.error("Could not load guest operation history; continuing without audit timestamps.", { code });
+    return [];
+  }
+}
+
 export async function listActiveLodges() {
   const db = getDb();
   const activeLodges = await db.select({
@@ -216,13 +231,15 @@ export async function getBookingByReference(reference: string) {
     const orderBookings = await db.select().from(bookings).where(eq(bookings.checkoutOrderId, order.id)).orderBy(bookings.createdAt);
     if (!orderBookings.length) return null;
     const bookingIds = orderBookings.map((booking) => booking.id);
+    const operatedBookingIds = orderBookings
+      .filter((booking) => booking.accommodationStatus === "CHECKED_IN" || booking.accommodationStatus === "CHECKED_OUT")
+      .map((booking) => booking.id);
     const categoryIds = [...new Set(orderBookings.map((booking) => booking.categoryId))];
     const [occupants, stays, guestOperations] = await Promise.all([
       db.select().from(bookingOccupants).where(inArray(bookingOccupants.bookingId, bookingIds)),
       db.select({ categoryId: accommodationCategories.id, categoryName: accommodationCategories.name, lodgeName: lodges.name, coordinatorName: lodges.contactName, coordinatorPhone: lodges.contactPhone, checkInDate: accommodationCategories.checkInDate, checkOutDate: accommodationCategories.checkOutDate })
         .from(accommodationCategories).innerJoin(lodges, eq(lodges.id, accommodationCategories.lodgeId)).where(inArray(accommodationCategories.id, categoryIds)),
-      db.select({ entityId: auditLogs.entityId, action: auditLogs.action, occurredAt: auditLogs.occurredAt }).from(auditLogs)
-        .where(and(inArray(auditLogs.entityId, bookingIds), inArray(auditLogs.action, ["booking.checked_in", "booking.checked_out", "booking.checkin_overridden"]))),
+      getGuestOperationAudit(db, operatedBookingIds),
     ]);
     const bedspaceIds = occupants.map((occupant) => occupant.bedspaceId).filter((id): id is string => id !== null);
     const bedspaceLabels = bedspaceIds.length ? await db.select({ id: bedspaces.id, letter: bedspaces.letter, roomName: rooms.name }).from(bedspaces).innerJoin(rooms, eq(rooms.id, bedspaces.roomId)).where(inArray(bedspaces.id, bedspaceIds)) : [];
@@ -265,6 +282,7 @@ export async function getBookingByReference(reference: string) {
   }
   const [booking] = await db.select().from(bookings).where(eq(bookings.reference, reference)).limit(1);
   if (!booking) return null;
+  const hasGuestOperations = booking.accommodationStatus === "CHECKED_IN" || booking.accommodationStatus === "CHECKED_OUT";
   const [occupants, [stay], guestOperations] = await Promise.all([
     db.select().from(bookingOccupants).where(eq(bookingOccupants.bookingId, booking.id)),
     db.select({
@@ -279,8 +297,7 @@ export async function getBookingByReference(reference: string) {
       .innerJoin(lodges, eq(lodges.id, accommodationCategories.lodgeId))
       .where(eq(accommodationCategories.id, booking.categoryId))
       .limit(1),
-    db.select({ action: auditLogs.action, occurredAt: auditLogs.occurredAt }).from(auditLogs)
-      .where(and(eq(auditLogs.entityId, booking.id), inArray(auditLogs.action, ["booking.checked_in", "booking.checked_out", "booking.checkin_overridden"]))),
+    getGuestOperationAudit(db, hasGuestOperations ? [booking.id] : []),
   ]);
   const bedspaceIds = occupants.map((occupant) => occupant.bedspaceId).filter((id): id is string => id !== null);
   const bedspaceLabels = bedspaceIds.length ? await db.select({ id: bedspaces.id, letter: bedspaces.letter, roomName: rooms.name }).from(bedspaces).innerJoin(rooms, eq(rooms.id, bedspaces.roomId)).where(inArray(bedspaces.id, bedspaceIds)) : [];
