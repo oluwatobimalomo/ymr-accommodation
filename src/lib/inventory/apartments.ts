@@ -1,8 +1,12 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import {
   accommodationCategories,
   accommodationUnits,
+  bookingOccupants,
+  bookings,
+  privateUnitAllocations,
+  inventoryHolds,
   bedspaces,
   facilities,
   lodges,
@@ -219,7 +223,7 @@ export async function listApartmentsForLodge(lodgeId: string): Promise<Apartment
     .from(accommodationUnits)
     .innerJoin(accommodationCategories, eq(accommodationCategories.id, accommodationUnits.categoryId))
     .where(eq(accommodationCategories.lodgeId, lodgeId))
-    .orderBy(accommodationUnits.name);
+    .orderBy(accommodationUnits.name, accommodationUnits.status);
 
   const facilityRows = rows.length
     ? await db.select({ unitId: unitFacilities.unitId, name: facilities.name }).from(unitFacilities).innerJoin(facilities, eq(facilities.id, unitFacilities.facilityId)).where(inArray(unitFacilities.unitId, rows.map((row) => row.unitId)))
@@ -231,7 +235,9 @@ export async function listApartmentsForLodge(lodgeId: string): Promise<Apartment
     : [];
   const overviewByUnit = new Map<string, string[]>();
   for (const facility of overviewRows) overviewByUnit.set(facility.unitId, [...(overviewByUnit.get(facility.unitId) ?? []), facility.name]);
-  return rows.map((r) => ({ ...r, image: r.image ?? undefined, facilities: facilitiesByUnit.get(r.unitId) ?? [], overviewFacilities: overviewByUnit.get(r.unitId) ?? [] }));
+  const seenCategories = new Set<string>();
+  return rows.filter((row) => { if (seenCategories.has(row.categoryId)) return false; seenCategories.add(row.categoryId); return true; })
+    .map((r) => ({ ...r, image: r.image ?? undefined, facilities: facilitiesByUnit.get(r.unitId) ?? [], overviewFacilities: overviewByUnit.get(r.unitId) ?? [] }));
 }
 
 export interface ApartmentRoomDetail {
@@ -272,6 +278,118 @@ export async function getApartmentDetail(unitId: string): Promise<ApartmentDetai
   return { unit, category, rooms: roomDetails, facilityIds: facilityRows.map((f) => f.facilityId), overviewFacilityIds: overviewRows.map((f) => f.facilityId) };
 }
 
+export interface ApartmentInventorySummary { stock: number; available: number; protected: number; priceNaira: number }
+
+export async function getApartmentInventory(unitId: string): Promise<ApartmentInventorySummary | null> {
+  const db = getDb();
+  const [unit] = await db.select().from(accommodationUnits).where(eq(accommodationUnits.id, unitId)).limit(1);
+  if (!unit) return null;
+  const [category] = await db.select().from(accommodationCategories).where(eq(accommodationCategories.id, unit.categoryId)).limit(1);
+  if (!category) return null;
+  if (category.mode === "PRIVATE") {
+    const units = await db.select({ id: accommodationUnits.id }).from(accommodationUnits).where(and(eq(accommodationUnits.categoryId, category.id), eq(accommodationUnits.status, "ACTIVE")));
+    const ids = units.map((row) => row.id);
+    if (!ids.length) return { stock: 0, available: 0, protected: 0, priceNaira: category.defaultPriceMinor / 100 };
+    const now = new Date();
+    const [allocations, holds] = await Promise.all([
+      db.select({ id: privateUnitAllocations.unitId }).from(privateUnitAllocations).where(and(inArray(privateUnitAllocations.unitId, ids), sql`${privateUnitAllocations.releasedAt} is null`)),
+      db.select({ id: inventoryHolds.unitId }).from(inventoryHolds).where(and(inArray(inventoryHolds.unitId, ids), sql`${inventoryHolds.expiresAt} > ${now}`)),
+    ]);
+    const busy = new Set([...allocations.map((row) => row.id), ...holds.map((row) => row.id)]);
+    return { stock: ids.length, available: ids.filter((id) => !busy.has(id)).length, protected: busy.size, priceNaira: category.defaultPriceMinor / 100 };
+  }
+  const roomRows = await db.select({ id: rooms.id }).from(rooms).innerJoin(accommodationUnits, eq(accommodationUnits.id, rooms.unitId)).where(and(eq(accommodationUnits.categoryId, category.id), eq(rooms.status, "ACTIVE"), eq(accommodationUnits.status, "ACTIVE")));
+  const ids = roomRows.map((row) => row.id);
+  if (!ids.length) return { stock: 0, available: 0, protected: 0, priceNaira: category.defaultPriceMinor / 100 };
+  const spaces = await db.select({ id: bedspaces.id, status: bedspaces.status }).from(bedspaces).where(and(inArray(bedspaces.roomId, ids), sql`${bedspaces.status} <> 'RETIRED'`));
+  const now = new Date();
+  const [holds, occupants] = await Promise.all([
+    db.select({ id: inventoryHolds.bedspaceId }).from(inventoryHolds).where(and(inArray(inventoryHolds.bedspaceId, spaces.map((space) => space.id)), sql`${inventoryHolds.expiresAt} > ${now}`)),
+    db.select({ id: bookingOccupants.bedspaceId }).from(bookingOccupants).innerJoin(bookings, eq(bookings.id, bookingOccupants.bookingId)).where(and(inArray(bookingOccupants.bedspaceId, spaces.map((space) => space.id)), eq(bookings.paymentStatus, "PAID"), sql`${bookings.accommodationStatus} <> 'CANCELLED'`)),
+  ]);
+  const busy = new Set([...holds.map((row) => row.id), ...occupants.map((row) => row.id)]);
+  return { stock: spaces.length, available: spaces.filter((space) => space.status === "AVAILABLE" && !busy.has(space.id)).length, protected: spaces.filter((space) => busy.has(space.id)).length, priceNaira: category.defaultPriceMinor / 100 };
+}
+
+export async function updateApartmentInventory(actor: Actor, unitId: string, input: { priceNaira: number; stock: number; minOrder: number; maxOrder: number | null; lowStockAlert: number; listed: boolean }) {
+  authorize(actor, "inventory.write");
+  if (!Number.isFinite(input.priceNaira) || input.priceNaira <= 0) throw new Error("Enter a valid price.");
+  if (!Number.isInteger(input.stock) || input.stock < 0) throw new Error("Stock must be zero or more.");
+  if (!Number.isInteger(input.minOrder) || input.minOrder < 1) throw new Error("Minimum order must be at least one.");
+  if (input.maxOrder !== null && (!Number.isInteger(input.maxOrder) || input.maxOrder < input.minOrder)) throw new Error("Maximum order must be at least the minimum order.");
+  if (!Number.isInteger(input.lowStockAlert) || input.lowStockAlert < 0) throw new Error("Low stock alert must be zero or more.");
+  const db = getDb();
+  return db.transaction(async (tx) => {
+    const [unit] = await tx.select().from(accommodationUnits).where(eq(accommodationUnits.id, unitId)).limit(1);
+    if (!unit) throw new Error("That apartment could not be found.");
+    const [category] = await tx.select().from(accommodationCategories).where(eq(accommodationCategories.id, unit.categoryId)).limit(1);
+    if (!category) throw new Error("That apartment could not be found.");
+    if (category.mode === "PRIVATE") {
+      const units = await tx.select().from(accommodationUnits).where(and(eq(accommodationUnits.categoryId, category.id), eq(accommodationUnits.status, "ACTIVE"))).for("update");
+      const ids = units.map((row) => row.id);
+      const now = new Date();
+      const [allocations, holds] = ids.length ? await Promise.all([
+        tx.select({ id: privateUnitAllocations.unitId }).from(privateUnitAllocations).where(and(inArray(privateUnitAllocations.unitId, ids), sql`${privateUnitAllocations.releasedAt} is null`)),
+        tx.select({ id: inventoryHolds.unitId }).from(inventoryHolds).where(and(inArray(inventoryHolds.unitId, ids), sql`${inventoryHolds.expiresAt} > ${now}`)),
+      ]) : [[], []];
+      const protectedIds = new Set([...allocations.map((row) => row.id), ...holds.map((row) => row.id)]);
+      if (input.stock < protectedIds.size) throw new Error(`At least ${protectedIds.size} units are booked or held and cannot be removed from stock.`);
+      if (input.stock < units.length) {
+        const remove = units.filter((row) => !protectedIds.has(row.id)).slice(0, units.length - input.stock);
+        if (remove.length !== units.length - input.stock) throw new Error("Could not safely reduce stock while units are being booked.");
+        await tx.update(accommodationUnits).set({ status: "INACTIVE", updatedAt: now }).where(inArray(accommodationUnits.id, remove.map((row) => row.id)));
+      } else if (input.stock > units.length) {
+        const [template] = units.length ? [units[0]] : await tx.select().from(accommodationUnits).where(eq(accommodationUnits.categoryId, category.id)).limit(1);
+        if (!template) throw new Error("Add an apartment unit before increasing its stock.");
+        const count = input.stock - units.length;
+        const clones = Array.from({ length: count }, () => ({ categoryId: category.id, name: template.name, code: `${slugCode(template.name)}${Math.random().toString(36).slice(2, 8).toUpperCase()}`, description: template.description, capacity: template.capacity, images: template.images, bedSpecifications: template.bedSpecifications, bedTypes: template.bedTypes, bedSizes: template.bedSizes, status: "ACTIVE" as const }));
+        const created = await tx.insert(accommodationUnits).values(clones).returning({ id: accommodationUnits.id });
+        const facilitiesForTemplate = await tx.select({ facilityId: unitFacilities.facilityId }).from(unitFacilities).where(eq(unitFacilities.unitId, template.id));
+        const overviewForTemplate = await tx.select({ facilityId: unitOverviewFacilities.facilityId }).from(unitOverviewFacilities).where(eq(unitOverviewFacilities.unitId, template.id));
+        if (facilitiesForTemplate.length) await tx.insert(unitFacilities).values(created.flatMap((row) => facilitiesForTemplate.map((facility) => ({ unitId: row.id, facilityId: facility.facilityId }))));
+        if (overviewForTemplate.length) await tx.insert(unitOverviewFacilities).values(created.flatMap((row) => overviewForTemplate.map((facility) => ({ unitId: row.id, facilityId: facility.facilityId }))));
+      }
+    } else {
+      const roomsForCategory = await tx.select({ id: rooms.id, name: rooms.name, code: rooms.code, genderRestriction: rooms.genderRestriction }).from(rooms).innerJoin(accommodationUnits, eq(accommodationUnits.id, rooms.unitId)).where(and(eq(accommodationUnits.categoryId, category.id), eq(rooms.status, "ACTIVE"), eq(accommodationUnits.status, "ACTIVE")));
+      const roomIds = roomsForCategory.map((row) => row.id);
+      const spaces = roomIds.length ? await tx.select().from(bedspaces).where(and(inArray(bedspaces.roomId, roomIds), sql`${bedspaces.status} <> 'RETIRED'`)).for("update") : [];
+      if (input.stock < spaces.length) {
+        const now = new Date();
+        const [holds, occupants] = spaces.length ? await Promise.all([
+          tx.select({ id: inventoryHolds.bedspaceId }).from(inventoryHolds).where(and(inArray(inventoryHolds.bedspaceId, spaces.map((space) => space.id)), sql`${inventoryHolds.expiresAt} > ${now}`)),
+          tx.select({ id: bookingOccupants.bedspaceId }).from(bookingOccupants).innerJoin(bookings, eq(bookings.id, bookingOccupants.bookingId)).where(and(inArray(bookingOccupants.bedspaceId, spaces.map((space) => space.id)), eq(bookings.paymentStatus, "PAID"), sql`${bookings.accommodationStatus} <> 'CANCELLED'`)),
+        ]) : [[], []];
+        const protectedIds = new Set([...holds.map((row) => row.id), ...occupants.map((row) => row.id)]);
+        if (input.stock < protectedIds.size) throw new Error(`At least ${protectedIds.size} bedspaces are booked or held and cannot be removed from stock.`);
+        const retire = spaces.filter((space) => space.status === "AVAILABLE" && !protectedIds.has(space.id)).slice(0, spaces.length - input.stock);
+        if (retire.length !== spaces.length - input.stock) throw new Error("Change blocked or occupied bedspace statuses before reducing stock.");
+        await tx.update(bedspaces).set({ status: "RETIRED", updatedAt: now }).where(inArray(bedspaces.id, retire.map((space) => space.id)));
+      } else if (input.stock > spaces.length) {
+        const [targetRoom] = roomsForCategory;
+        if (!targetRoom) throw new Error("Add a room before increasing shared bedspace stock.");
+        const allLetters = await tx.select({ letter: bedspaces.letter }).from(bedspaces).where(eq(bedspaces.roomId, targetRoom.id));
+        const used = new Set(allLetters.map((row) => Number(row.letter)).filter(Number.isFinite));
+        let next = 1;
+        const values = Array.from({ length: input.stock - spaces.length }, () => { while (used.has(next)) next++; const letter = String(next); used.add(next++); return { roomId: targetRoom.id, letter }; });
+        await tx.insert(bedspaces).values(values);
+      }
+    }
+    await tx.update(accommodationCategories).set({ defaultPriceMinor: Math.round(input.priceNaira * 100), minOrderQuantity: input.minOrder, maxOrderQuantity: input.maxOrder, lowStockAlert: input.lowStockAlert, status: input.listed ? "ACTIVE" : "INACTIVE", updatedAt: new Date() }).where(eq(accommodationCategories.id, category.id));
+    await recordAudit(tx, { actor, action: "inventory.apartment_inventory_updated", entityType: "accommodation_category", entityId: category.id, after: input });
+  });
+}
+
+export async function getApartmentOrders(actor: Actor, unitId: string) {
+  const db = getDb();
+  const [unit] = await db.select({ categoryId: accommodationUnits.categoryId }).from(accommodationUnits).where(eq(accommodationUnits.id, unitId)).limit(1);
+  if (!unit) return null;
+  const [category] = await db.select({ lodgeId: accommodationCategories.lodgeId }).from(accommodationCategories).where(eq(accommodationCategories.id, unit.categoryId)).limit(1);
+  if (!category) return null;
+  authorize(actor, "booking.read", { lodgeId: category.lodgeId });
+  return db.select({ reference: bookings.reference, name: bookings.bookerName, phone: bookings.bookerPhone, email: bookings.bookerEmail, quantity: bookings.occupantCount, amountMinor: bookings.amountMinor, paymentStatus: bookings.paymentStatus, stayStatus: bookings.accommodationStatus, createdAt: bookings.createdAt })
+    .from(bookings).where(eq(bookings.categoryId, unit.categoryId)).orderBy(sql`${bookings.createdAt} desc`);
+}
+
 export interface UpdateApartmentInput {
   name?: string;
   priceNaira?: number;
@@ -292,6 +410,8 @@ export async function updateApartment(actor: Actor, unitId: string, input: Updat
   return db.transaction(async (tx) => {
     const [unit] = await tx.select().from(accommodationUnits).where(eq(accommodationUnits.id, unitId)).limit(1);
     if (!unit) throw new Error("That apartment could not be found.");
+    const categoryUnits = await tx.select({ id: accommodationUnits.id }).from(accommodationUnits).where(eq(accommodationUnits.categoryId, unit.categoryId));
+    const categoryUnitIds = categoryUnits.map((row) => row.id);
 
     if (input.name !== undefined || input.images !== undefined || input.bedSpecifications !== undefined || input.bedTypes !== undefined || input.bedSizes !== undefined) {
       await tx
@@ -304,7 +424,7 @@ export async function updateApartment(actor: Actor, unitId: string, input: Updat
           ...(input.bedSizes !== undefined ? { bedSizes: [...new Set(input.bedSizes)] } : {}),
           updatedAt: new Date(),
         })
-        .where(eq(accommodationUnits.id, unitId));
+        .where(inArray(accommodationUnits.id, categoryUnitIds));
       // Keep the category's own name in step, so it doesn't silently
       // diverge from the apartment name shown everywhere else.
       if (input.name !== undefined) {
@@ -328,7 +448,7 @@ export async function updateApartment(actor: Actor, unitId: string, input: Updat
     }
 
     if (input.facilityIds !== undefined) {
-      await tx.delete(unitFacilities).where(eq(unitFacilities.unitId, unitId));
+      await tx.delete(unitFacilities).where(inArray(unitFacilities.unitId, categoryUnitIds));
       await tx.insert(facilities).values({ name: "Bed", sortOrder: 0 }).onConflictDoNothing({ target: facilities.name });
       const [bedFacility] = await tx
         .select({ id: facilities.id })
@@ -337,20 +457,20 @@ export async function updateApartment(actor: Actor, unitId: string, input: Updat
         .limit(1);
       const facilityIds = [...new Set([...input.facilityIds, ...(bedFacility ? [bedFacility.id] : [])])];
       if (facilityIds.length) {
-        await tx.insert(unitFacilities).values(facilityIds.map((facilityId) => ({ unitId, facilityId })));
+        await tx.insert(unitFacilities).values(categoryUnitIds.flatMap((id) => facilityIds.map((facilityId) => ({ unitId: id, facilityId }))));
       }
       const allowedOverview = [...new Set((input.overviewFacilityIds ?? []).filter((id) => facilityIds.includes(id)))];
-      await tx.delete(unitOverviewFacilities).where(eq(unitOverviewFacilities.unitId, unitId));
+      await tx.delete(unitOverviewFacilities).where(inArray(unitOverviewFacilities.unitId, categoryUnitIds));
       if (allowedOverview.length) {
-        await tx.insert(unitOverviewFacilities).values(allowedOverview.map((facilityId) => ({ unitId, facilityId })));
+        await tx.insert(unitOverviewFacilities).values(categoryUnitIds.flatMap((id) => allowedOverview.map((facilityId) => ({ unitId: id, facilityId }))));
       }
     } else if (input.overviewFacilityIds !== undefined) {
       const selected = await tx.select({ facilityId: unitFacilities.facilityId }).from(unitFacilities).where(eq(unitFacilities.unitId, unitId));
       const selectedIds = selected.map((item) => item.facilityId);
       const allowedOverview = [...new Set(input.overviewFacilityIds.filter((id) => selectedIds.includes(id)))];
-      await tx.delete(unitOverviewFacilities).where(eq(unitOverviewFacilities.unitId, unitId));
+      await tx.delete(unitOverviewFacilities).where(inArray(unitOverviewFacilities.unitId, categoryUnitIds));
       if (allowedOverview.length) {
-        await tx.insert(unitOverviewFacilities).values(allowedOverview.map((facilityId) => ({ unitId, facilityId })));
+        await tx.insert(unitOverviewFacilities).values(categoryUnitIds.flatMap((id) => allowedOverview.map((facilityId) => ({ unitId: id, facilityId }))));
       }
     }
 

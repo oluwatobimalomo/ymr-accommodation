@@ -8,3 +8,4 @@ export * from "./booking-orders";
 export * from "./keys";
 export * from "./support";
 export * from "./payments";
+export * from "./email-outbox";

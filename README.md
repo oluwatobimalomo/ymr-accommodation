@@ -1,8 +1,14 @@
 # YMR Accommodation - Phase 1-4 (Foundation, Inventory, Booking, Operations groundwork)
 
+## Phase 5C — email delivery, room search and reports
+
+Confirmed Paystack bookings now queue a booking email for the booker and, when the checkout is a gift, a separate gift email to the recipient. Messages use Resend and an idempotent database outbox; transient errors retry with backoff up to five attempts. Migration `0020_email_outbox.sql` creates the outbox; `0021_apartment_inventory_controls_and_email_attachments.sql` adds inventory/order controls and embedded email images. Set `RESEND_API_KEY`, `EMAIL_FROM` (a verified sender domain), and `APP_ORIGIN`. Configure a scheduler to call `GET /api/cron/email-outbox` with `Authorization: Bearer $CRON_SECRET` so queued mail is retried after the payment request ends. Gift recipients can look up their ticket with their recipient phone number.
+
+The lodge apartment detail modal has a room-name search inside the independently scrollable bedspace selector. The standalone booking page also has room search and pagination. Admin > Reports provides date/event filters, booking/payment summary metrics, and an Excel-compatible CSV export, filtered to the staff member’s permitted lodges.
+
 ## Phase 5B — arrival, departure and key custody
 
-The admin booking page now supports check-in and check-out. Check-in requires a paid, fully allocated booking unless a staff member has the audited override permission and enters a reason. Keys can be issued to an allocated occupant after check-in, tracked by lodge-scoped key label, returned, or reported missing with a reason. Checkout is blocked while a key remains issued. Migration `0019_checkin_key_custody.sql` adds the key handover history and active-key uniqueness constraints. Email delivery remains a later step.
+The admin booking page now supports check-in and check-out. Check-in requires a paid, fully allocated booking unless a staff member has the audited override permission and enters a reason. Keys can be issued to an allocated occupant after check-in, tracked by lodge-scoped key label, returned, or reported missing with a reason. Checkout is blocked while a key remains issued. Migration `0019_checkin_key_custody.sql` adds the key handover history and active-key uniqueness constraints.
 
 ## Phase 5A — booking and payment correctness
 
@@ -70,7 +76,7 @@ You asked how booking would work for "4 male and 5 female dormitories, each with
 - The lodge's own photo no longer repeats on its own detail page — redundant once you're already there.
 - Category cards ("Female Dormitory" / "Male Dormitory") were showing the *identical* generic placeholder icon for both, because categories never had real photos of their own — only the apartment underneath does. Fixed to pull each category's real apartment photo instead.
 
-**One thing I'm flagging rather than silently deciding for you:** with genuinely large room counts (190+), the *customer-facing* booking page currently renders one room-card per room in the seat-map picker, which would be an extremely long page to scroll for a category like that. The honest options are: (a) default `customerSelectsBedspace` to off for such categories so the system auto-allocates instead of asking the customer to browse 190 room cards, or (b) build a proper paginated/searchable room picker. Neither is built yet — I'd rather tell you this is unresolved than quietly pick one.
+**Room search gap (since addressed):** the original picker became cumbersome at 190+ rooms. The regular booking form now has search and pagination, and the lodge detail modal has room search inside its bedspace selector.
 
 Tests: **226 total** (was 223).
 
@@ -149,17 +155,15 @@ Tests: **212 total** (was 200) — added webhook signature tests and 6 tests cov
 
 **Solid and tested:** inventory hierarchy, race-condition-safe booking/holds, gender enforcement, RBAC, audit logging, event config, support tickets, admin booking visibility.
 
-**Still not built — this is the real remaining work, not yet started:**
+**Still outstanding:**
 - **Reallocation** (section 33) — no way to move an occupant between bedspaces after booking, beyond a full cancel.
-- **Reports and CSV/Excel export** (section 35) — none exist.
-- **Email notifications** (section 38) — nothing is emailed at any point in the flow, including payment confirmation.
+- **Refund recording** — cash refunds are handled directly in Paystack by choice; no refund ledger/status is maintained in this app.
 - **Admin users/roles management UI** — staff accounts can currently only be created by editing environment variables and rerunning the seed script.
 - **Admin audit log viewer** — the audit log is written correctly (verified by tests) but nothing lets you browse it yet.
 - **Admin events management** — the seed script edits the one event directly; no UI exists.
 - **Standalone `/admin/categories`, `/admin/units`, `/admin/rooms` list pages** — still only reachable by drilling down from a lodge.
 - **Officer-to-lodge assignment** — the lodge-scoped role exists but has no way to actually be scoped to a lodge yet.
-- **Unit image uploads** — only lodges support photo upload so far.
-- **Paystack refunds** — not automated; the brief's own recommended approach (manual refund via the Paystack dashboard, recorded in our system) is what's assumed until this is built.
+- **Object storage for images** — lodge and apartment uploads are stored as base64 in Postgres, which is an MVP shortcut rather than scalable media storage.
 
 ## Setup
 ```bash

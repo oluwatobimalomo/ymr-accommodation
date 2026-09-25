@@ -1,5 +1,5 @@
 import { handleAdminAction } from "@/lib/admin-action";
-import { addBedspacesToRoom, addRoomToApartment, getApartmentDetail, updateApartment } from "@/lib/inventory/apartments";
+import { addBedspacesToRoom, addRoomToApartment, getApartmentDetail, updateApartment, updateApartmentInventory } from "@/lib/inventory/apartments";
 import { setBedspaceStatus } from "@/lib/inventory/bedspaces";
 import { filesToDataUris } from "@/lib/uploads";
 
@@ -7,6 +7,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   return handleAdminAction(request, `/admin/apartments/${id}`, async (form, actor) => {
     const intent = String(form.get("intent") ?? "update");
+
+    if (intent === "inventory") {
+      const maximum = String(form.get("maxOrder") ?? "").trim();
+      await updateApartmentInventory(actor, id, {
+        priceNaira: Number(form.get("priceNaira")),
+        stock: Number(form.get("stock")),
+        minOrder: Number(form.get("minOrder")),
+        maxOrder: maximum ? Number(maximum) : null,
+        lowStockAlert: Number(form.get("lowStockAlert")),
+        listed: form.get("listed") === "on",
+      });
+      return;
+    }
 
     if (intent === "images") {
       const detail = await getApartmentDetail(id);

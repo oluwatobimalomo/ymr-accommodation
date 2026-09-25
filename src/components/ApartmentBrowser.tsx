@@ -24,9 +24,13 @@ export interface ApartmentListing {
   bedSizes: string[];
   bedSpecifications: string[];
   bedspaceOptions: Array<{ id: string; roomName: string; letter: string; genderRestriction: string; status: "AVAILABLE" | "OCCUPIED" | "HELD" | "BLOCKED" | "MAINTENANCE" | "RETIRED" }>;
+  availableStock: number;
+  totalStock: number;
+  minOrderQuantity: number;
+  maxOrderQuantity: number | null;
 }
 
-interface CartItem { categoryId: string; name: string; priceMinor: number; pricingModel: string; mode: "PRIVATE" | "SHARED"; customerSelectsBedspace?: boolean; quantity: number; bedspaceIds?: string[]; bedspaceLabels?: Array<{ letter: string; roomName: string }>; }
+interface CartItem { categoryId: string; name: string; priceMinor: number; pricingModel: string; mode: "PRIVATE" | "SHARED"; customerSelectsBedspace?: boolean; quantity: number; availableStock?: number; maxOrderQuantity?: number | null; bedspaceIds?: string[]; bedspaceLabels?: Array<{ letter: string; roomName: string }>; }
 interface Guest { name: string; gender: "" | "MALE" | "FEMALE"; }
 const BAG_KEY = "ymr-accommodation-bag-v1";
 
@@ -81,6 +85,11 @@ export function ApartmentBrowser({ apartments, lodgeName }: { apartments: Apartm
       setError("Choose at least one available bedspace to add this apartment to your bag.");
       return;
     }
+    const currentQuantity = bag.find((item) => item.categoryId === apartment.id)?.quantity ?? 0;
+    const adding = apartment.mode === "SHARED" ? bedspaceIds.length || 1 : 1;
+    const cap = Math.min(apartment.availableStock, apartment.maxOrderQuantity ?? Number.POSITIVE_INFINITY);
+    if (currentQuantity + adding > cap) { setError(cap === 0 ? "No units are currently available in this apartment." : `You can add up to ${cap} unit${cap === 1 ? "" : "s"} of this apartment.`); return; }
+    if (currentQuantity + adding < apartment.minOrderQuantity && apartment.mode === "SHARED") { setError(`Choose at least ${apartment.minOrderQuantity} bedspaces to add this apartment.`); return; }
     setError("");
     setSelectedBeds((current) => ({ ...current, [apartment.id]: [] }));
     const selectedBedspaces = bedspaceIds.map((id) => apartment.bedspaceOptions.find((option) => option.id === id)).filter((option) => option !== undefined).map((option) => ({ letter: option.letter, roomName: option.roomName }));
@@ -91,7 +100,7 @@ export function ApartmentBrowser({ apartments, lodgeName }: { apartments: Apartm
         : { ...item, quantity: item.quantity + 1 });
       return [...current, {
       categoryId: apartment.id, name: apartment.name, priceMinor: apartment.defaultPriceMinor,
-      pricingModel: apartment.pricingModel, mode: apartment.mode, customerSelectsBedspace: apartment.customerSelectsBedspace, quantity: apartment.mode === "SHARED" ? bedspaceIds.length || 1 : 1,
+      pricingModel: apartment.pricingModel, mode: apartment.mode, customerSelectsBedspace: apartment.customerSelectsBedspace, quantity: apartment.mode === "SHARED" ? bedspaceIds.length || 1 : 1, availableStock: apartment.availableStock, maxOrderQuantity: apartment.maxOrderQuantity,
       ...(bedspaceIds.length ? { bedspaceIds, bedspaceLabels: selectedBedspaces } : {}),
     }];
     });
@@ -159,8 +168,8 @@ export function ApartmentBrowser({ apartments, lodgeName }: { apartments: Apartm
             {selected.bedTypes.length + selected.bedSizes.length > 0 && <section><h3>Beds</h3><p><strong>{selected.bedTypes.join(", ")}</strong>{selected.bedSizes.length > 0 ? ` · ${selected.bedSizes.join(", ")}` : ""}</p></section>}
             <section><h3>All amenities</h3>{selected.facilities.length ? <ul className="amenity-list">{selected.facilities.map((amenity) => <li key={amenity}>{expandAmenity(amenity)}</li>)}</ul> : <p>Contact the lodge for amenity details.</p>}</section>
             {needsBedspaceSelection && <><div className="detail-price"><strong>{formatNaira(selected.defaultPriceMinor)}</strong><span>{selected.pricingModel === "PER_PERSON" ? "per guest for this stay" : "per apartment for this stay"}</span></div><button className="btn bedspace-add-action" type="button" disabled={!(selectedBeds[selected.id]?.length) || selected.bedspaceOptions.length === 0} onClick={() => addToBag(selected)}>{bag.some((item) => item.categoryId === selected.id) ? "Add another" : "Add to bag"}</button></>}
-            {selected.mode === "SHARED" && selected.customerSelectsBedspace && <fieldset className="bedspace-pick-list"><legend>Choose bedspaces</legend>{selected.bedspaceOptions.length ? <BedspaceSeatMap options={selected.bedspaceOptions} selectedIds={selectedBeds[selected.id] ?? []} onToggle={(id) => setSelectedBeds((current) => ({ ...current, [selected.id]: (current[selected.id] ?? []).includes(id) ? (current[selected.id] ?? []).filter((selectedId) => selectedId !== id) : [...(current[selected.id] ?? []), id] }))} /> : <p>No bedspaces are available right now.</p>}</fieldset>}
-            {!needsBedspaceSelection && <><div className="detail-price"><strong>{formatNaira(selected.defaultPriceMinor)}</strong><span>{selected.pricingModel === "PER_PERSON" ? "per guest for this stay" : "per apartment for this stay"}</span></div><button className="btn" type="button" onClick={() => addToBag(selected)}>{bag.some((item) => item.categoryId === selected.id) ? "Add another" : "Add to bag"}</button></>}
+            {selected.mode === "SHARED" && selected.customerSelectsBedspace && <fieldset className="bedspace-pick-list"><legend>Choose bedspaces</legend>{selected.bedspaceOptions.length ? <BedspaceSeatMap key={selected.id} options={selected.bedspaceOptions} selectedIds={selectedBeds[selected.id] ?? []} onToggle={(id) => setSelectedBeds((current) => ({ ...current, [selected.id]: (current[selected.id] ?? []).includes(id) ? (current[selected.id] ?? []).filter((selectedId) => selectedId !== id) : [...(current[selected.id] ?? []), id] }))} /> : <p>No bedspaces are available right now.</p>}</fieldset>}
+            {!needsBedspaceSelection && <><div className="detail-price"><strong>{formatNaira(selected.defaultPriceMinor)}</strong><span>{selected.pricingModel === "PER_PERSON" ? "per guest for this stay" : "per apartment for this stay"}</span></div><button className="btn" type="button" disabled={selected.availableStock === 0} onClick={() => addToBag(selected)}>{selected.availableStock === 0 ? "Sold out" : bag.some((item) => item.categoryId === selected.id) ? "Add another" : "Add to bag"}</button></>}
           </div>
         </div>
       </>}
@@ -182,7 +191,7 @@ export function ApartmentBrowser({ apartments, lodgeName }: { apartments: Apartm
           <button className="btn" type="submit" disabled={busy}>{busy ? "Preparing checkout…" : "Continue to payment"}</button>
           <button type="button" className="btn secondary" onClick={() => setCheckout(false)}>Back to bag</button>
         </form> : <>
-          <div className="bag-items">{bag.map((item) => <article className="bag-item" key={item.categoryId}><div><strong>{item.name} × {item.quantity}</strong><span>{formatNaira(itemAmount(item))}</span>{item.bedspaceLabels?.length ? <span>{item.bedspaceLabels.map((bedspace) => `BDS ${bedspace.letter}`).join(", ")}</span> : null}<div className="bag-quantity"><button type="button" aria-label={`Decrease ${item.name} quantity`} disabled={item.quantity <= 1} onClick={() => setBag((current) => current.map((entry) => entry.categoryId === item.categoryId ? { ...entry, quantity: entry.quantity - 1, bedspaceIds: entry.bedspaceIds?.slice(0, -1), bedspaceLabels: entry.bedspaceLabels?.slice(0, -1) } : entry))}>−</button><span>Quantity {item.quantity}</span>{(!item.customerSelectsBedspace || item.mode === "PRIVATE") && <button type="button" aria-label={`Increase ${item.name} quantity`} onClick={() => setBag((current) => current.map((entry) => entry.categoryId === item.categoryId ? { ...entry, quantity: entry.quantity + 1 } : entry))}>+</button>}</div></div><button className="text-button remove-bag-item" type="button" onClick={() => setBag((current) => current.filter((entry) => entry.categoryId !== item.categoryId))}>Remove</button></article>)}</div>
+          <div className="bag-items">{bag.map((item) => <article className="bag-item" key={item.categoryId}><div><strong>{item.name} × {item.quantity}</strong><span>{formatNaira(itemAmount(item))}</span>{item.bedspaceLabels?.length ? <span>{item.bedspaceLabels.map((bedspace) => `BDS ${bedspace.letter}`).join(", ")}</span> : null}<div className="bag-quantity"><button type="button" aria-label={`Decrease ${item.name} quantity`} disabled={item.quantity <= 1} onClick={() => setBag((current) => current.map((entry) => entry.categoryId === item.categoryId ? { ...entry, quantity: entry.quantity - 1, bedspaceIds: entry.bedspaceIds?.slice(0, -1), bedspaceLabels: entry.bedspaceLabels?.slice(0, -1) } : entry))}>−</button><span>Quantity {item.quantity}</span>{(!item.customerSelectsBedspace || item.mode === "PRIVATE") && <button type="button" aria-label={`Increase ${item.name} quantity`} disabled={item.quantity >= Math.min(item.availableStock ?? Number.POSITIVE_INFINITY, item.maxOrderQuantity ?? Number.POSITIVE_INFINITY)} onClick={() => setBag((current) => current.map((entry) => entry.categoryId === item.categoryId ? { ...entry, quantity: entry.quantity + 1 } : entry))}>+</button>}</div></div><button className="text-button remove-bag-item" type="button" onClick={() => setBag((current) => current.filter((entry) => entry.categoryId !== item.categoryId))}>Remove</button></article>)}</div>
           <div className="bag-total"><span>Total</span><strong>{formatNaira(total)}</strong></div>
           <div className="bag-actions"><button type="button" className="btn" onClick={() => setCheckout(true)}>Checkout</button><button type="button" className="btn secondary" onClick={() => setBagOpen(false)}>Keep shopping</button></div>
         </>}
@@ -197,11 +206,16 @@ function expandAmenity(name: string) {
 
 type BedspaceOption = ApartmentListing["bedspaceOptions"][number];
 function BedspaceSeatMap({ options, selectedIds, onToggle }: { options: BedspaceOption[]; selectedIds: string[]; onToggle: (id: string) => void }) {
+  const [roomSearch, setRoomSearch] = useState("");
   const roomNames = [...new Set(options.map((option) => option.roomName))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
-  return <div className="bedspace-room-list">{roomNames.map((roomName) => <section className="bedspace-room" key={roomName}><strong>{roomName}</strong><div className="bedspace-seat-grid">{options.filter((option) => option.roomName === roomName).sort((a, b) => a.letter.localeCompare(b.letter, undefined, { numeric: true, sensitivity: "base" })).map((option) => {
+  const visibleRoomNames = roomNames.filter((name) => name.toLocaleLowerCase().includes(roomSearch.trim().toLocaleLowerCase()));
+  return <>
+    {roomNames.length > 1 && <label className="bedspace-room-search"><span className="sr-only">Search rooms</span><input type="search" value={roomSearch} onChange={(event) => setRoomSearch(event.target.value)} placeholder="Search rooms…" /><span>{visibleRoomNames.length} of {roomNames.length} rooms</span></label>}
+    {visibleRoomNames.length === 0 ? <p className="empty-state">No rooms match “{roomSearch}”.</p> : <div className="bedspace-room-list">{visibleRoomNames.map((roomName) => <section className="bedspace-room" key={roomName}><strong>{roomName}</strong><div className="bedspace-seat-grid">{options.filter((option) => option.roomName === roomName).sort((a, b) => a.letter.localeCompare(b.letter, undefined, { numeric: true, sensitivity: "base" })).map((option) => {
     const isAvailable = option.status === "AVAILABLE";
     const isSelected = selectedIds.includes(option.id);
     const stateText = option.status === "HELD" ? "On hold" : option.status === "OCCUPIED" ? "Occupied" : isAvailable ? "Available" : "Unavailable";
     return <button key={option.id} type="button" className={`bedspace-seat${isSelected ? " is-selected" : ""}${!isAvailable ? " is-unavailable" : ""}`} disabled={!isAvailable} aria-pressed={isSelected} onClick={() => onToggle(option.id)}><strong>BDS {option.letter}</strong><span>{stateText}</span></button>;
-  })}</div></section>)}</div>;
+  })}</div></section>)}</div>}
+  </>;
 }

@@ -68,8 +68,8 @@ export default async function BookingConfirmationPage({
   // check. Merely adding callback-looking query parameters to a booking URL
   // must never expose occupant and coordinator details.
   if (!verifiedPaystackReturn) {
-    const phoneMatches =
-      query.phone && booking.bookerPhone.replace(/\s+/g, "") === query.phone.trim().replace(/\s+/g, "");
+    const normalizedPhone = query.phone?.trim().replace(/\s+/g, "");
+    const phoneMatches = normalizedPhone && [booking.bookerPhone, data.giftRecipient?.phone].filter(Boolean).some((phone) => phone!.replace(/\s+/g, "") === normalizedPhone);
     if (!phoneMatches) {
       return (
         <div className="stack">
@@ -96,6 +96,7 @@ export default async function BookingConfirmationPage({
     <div className="booking-ticket-page stack">
       {verifiedPaystackReturn && booking.paymentStatus === "PAID" && <ClearBagOnSuccess />}
       <div className="booking-print-area">
+      <div className="ticket-print-brand"><img src="/ymr-mark.png" alt="" /><span><strong>YMR Accommodation</strong><small>YMR 2026 · CITY TAKERS · 10TH ANNIVERSARY</small></span></div>
       <header className={`booking-ticket-hero${booking.paymentStatus === "PAID" ? " is-paid" : ""}`}>
         <div className="ticket-confirmation-mark" aria-hidden="true">{booking.paymentStatus === "PAID" ? "✓" : "•"}</div>
         <div><span className="eyebrow">YMR Accommodation · Booking update</span><h1>{booking.paymentStatus === "PAID" ? "Your stay is confirmed" : "Your reservation is held"}</h1>
@@ -112,14 +113,14 @@ export default async function BookingConfirmationPage({
         {items.length <= 1 && <div className="ticket-stay-grid">
           <div><span className="ticket-label">Lodge</span><strong>{lodgeName || "Accommodation"}</strong></div>
           <div><span className="ticket-label">Apartment</span><strong>{categoryName || "Assigned accommodation"}</strong></div>
-          <div><span className="ticket-label">Check-in</span><strong>{formatDateOnly(checkInDate) || "To be confirmed"}</strong></div>
-          <div><span className="ticket-label">Check-out</span><strong>{formatDateOnly(checkOutDate) || "To be confirmed"}</strong></div>
+          {(items[0]?.actualCheckInAt || checkInDate) && <div><span className="ticket-label">{items[0]?.actualCheckInAt ? "Checked in" : "Expected Check-in"}</span><strong>{items[0]?.actualCheckInAt ? new Intl.DateTimeFormat("en-NG", { dateStyle: "medium", timeStyle: "short" }).format(new Date(items[0].actualCheckInAt)) : formatDateOnly(checkInDate) || "Date to be advised"}</strong></div>}
+          {items[0]?.actualCheckOutAt && <div><span className="ticket-label">Checked out</span><strong>{new Intl.DateTimeFormat("en-NG", { dateStyle: "medium", timeStyle: "short" }).format(new Date(items[0].actualCheckOutAt))}</strong></div>}
         </div>}
       </section>
 
       <section className="card ticket-booker-details"><span className="eyebrow">Booked by</span><strong>{booking.bookerName}</strong><span>{bookerEmail || booking.bookerEmail}</span><span>{booking.bookerPhone}</span></section>
 
-      {items.length > 1 && <section className="card ticket-order-items"><div className="ticket-section-heading"><div><span className="eyebrow">Your accommodation</span><h2>Booking details by lodge</h2></div><span>{items.length} items</span></div>{items.map((item) => <article className="ticket-order-item" key={item.reference}><span className="ticket-label">Item {item.sequence}</span><h3>{item.apartmentName}</h3><p><strong>{item.lodgeName}</strong> · {formatDateOnly(item.checkInDate) || "Check-in to be confirmed"} – {formatDateOnly(item.checkOutDate) || "Check-out to be confirmed"}</p><ul>{item.occupants.map((guest, index) => <li key={`${guest.name}-${index}`}>{guest.name}{guest.allocation ? ` · ${guest.allocation}` : ""}</li>)}</ul><strong>{formatNaira(item.amountMinor)}</strong><div className="ticket-coordinator"><span className="ticket-label">Lodge Coordinator:</span><strong>{item.coordinatorName || "Contact support"}</strong><span>|</span>{item.coordinatorPhone ? <a href={`tel:${item.coordinatorPhone}`}>{item.coordinatorPhone}</a> : <a href="/support">Support</a>}</div></article>)}</section>}
+      {items.length > 1 && <section className="card ticket-order-items"><div className="ticket-section-heading"><div><span className="eyebrow">Your accommodation</span><h2>Booking details by lodge</h2></div><span>{items.length} items</span></div>{items.map((item) => <article className="ticket-order-item" key={item.reference}><span className="ticket-label">Item {item.sequence}</span><h3>{item.apartmentName}</h3><p><strong>{item.lodgeName}</strong>{item.actualCheckInAt ? ` · Checked in ${new Intl.DateTimeFormat("en-NG", { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.actualCheckInAt))}` : item.checkInDate ? ` · Expected Check-in: ${formatDateOnly(item.checkInDate)}` : ""}{item.actualCheckOutAt ? ` · Checked out ${new Intl.DateTimeFormat("en-NG", { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.actualCheckOutAt))}` : ""}</p><ul>{item.occupants.map((guest, index) => <li key={`${guest.name}-${index}`}>{guest.name}{guest.allocation ? ` · ${guest.allocation}` : ""}</li>)}</ul><strong>{formatNaira(item.amountMinor)}</strong><div className="ticket-coordinator"><span className="ticket-label">Lodge Coordinator:</span><strong>{item.coordinatorName || "Contact support"}</strong><span>|</span>{item.coordinatorPhone ? <a href={`tel:${item.coordinatorPhone}`}>{item.coordinatorPhone}</a> : <a href="/support">Support</a>}</div></article>)}</section>}
 
         {items.length <= 1 && isGift && <section className="card ticket-occupants">
           <div className="ticket-section-heading"><div><span className="eyebrow">Guest details</span><h2>Occupants</h2></div><span>{occupants.length} guest{occupants.length === 1 ? "" : "s"}</span></div>

@@ -141,6 +141,20 @@
       "when": 1790209000000,
       "tag": "0019_checkin_key_custody",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790210000000,
+      "tag": "0020_email_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1790211000000,
+      "tag": "0021_apartment_inventory_controls_and_email_attachments",
+      "breakpoints": true
     }
   ]
 }

@@ -61,6 +61,9 @@ export const accommodationCategories = pgTable("accommodation_categories", {
   pricingModel: pricingModel("pricing_model").notNull(),
   /** Minor units (kobo). Currency is inherited from the parent event. */
   defaultPriceMinor: integer("default_price_minor").notNull(),
+  minOrderQuantity: integer("min_order_quantity").notNull().default(1),
+  maxOrderQuantity: integer("max_order_quantity"),
+  lowStockAlert: integer("low_stock_alert").notNull().default(3),
   /** Dates for the stay represented by this listed, already-totalled price. */
   checkInDate: date("check_in_date", { mode: "string" }),
   checkOutDate: date("check_out_date", { mode: "string" }),

@@ -7,7 +7,7 @@ import { ImageUploadInput } from "@/components/ImageUploadInput";
 import { ApartmentStayDates } from "@/components/ApartmentStayDates";
 import { ApartmentAmenitiesForm } from "@/components/ApartmentAmenitiesForm";
 import { requireActor } from "@/lib/auth/require";
-import { getApartmentDetail } from "@/lib/inventory/apartments";
+import { getApartmentDetail, getApartmentInventory, getApartmentOrders } from "@/lib/inventory/apartments";
 import { listFacilities } from "@/lib/inventory/facilities";
 import { getLodge } from "@/lib/inventory/lodges";
 
@@ -27,15 +27,18 @@ export default async function ApartmentDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; tab?: string }>;
 }) {
-  await requireActor();
+  const actor = await requireActor();
   const { id } = await params;
-  const { error } = await searchParams;
+  const { error, tab: requestedTab } = await searchParams;
+  const tab = requestedTab === "orders" || requestedTab === "inventory" ? requestedTab : "customize";
   const detail = await getApartmentDetail(id);
   if (!detail) notFound();
   const { unit, category, facilityIds, overviewFacilityIds } = detail;
   const lodge = await getLodge(category.lodgeId);
+  const inventory = await getApartmentInventory(id);
+  const orders = tab === "orders" ? (await getApartmentOrders(actor, id) ?? []) : [];
   const allFacilities = category.mode === "PRIVATE" ? (await listFacilities()).filter((facility) => facility.name.trim().toLowerCase() !== "bed") : [];
   return (
     <div className="stack">
@@ -49,6 +52,32 @@ export default async function ApartmentDetailPage({
         {category.genderRestriction !== "ANY" && <Badge>{category.genderRestriction === "MALE" ? "Male" : "Female"}</Badge>}
       </div>
 
+      <nav className="admin-tabs" aria-label="Apartment management">
+        <Link aria-current={tab === "orders" ? "page" : undefined} href={`?tab=orders`}>Orders</Link>
+        <Link aria-current={tab === "inventory" ? "page" : undefined} href={`?tab=inventory`}>Inventory</Link>
+        <Link aria-current={tab === "customize" ? "page" : undefined} href={`?tab=customize`}>Customize</Link>
+      </nav>
+
+      {tab === "inventory" && inventory && <section className="card stack">
+        <div><h2>Inventory</h2><p className="listing-meta">{inventory.available} available of {inventory.stock} listed units. {inventory.available <= category.lowStockAlert ? "Low stock alert threshold reached." : ""}</p></div>
+        <form method="post" action={`/api/admin/apartments/${unit.id}`} className="inventory-fields">
+          <input type="hidden" name="intent" value="inventory" />
+          <label className="field">Price (₦)<input name="priceNaira" type="number" min="0.01" step="0.01" defaultValue={category.defaultPriceMinor / 100} required /></label>
+          <label className="field">No. in stock<input name="stock" type="number" min="0" step="1" defaultValue={inventory.stock} required /></label>
+          <label className="field">Minimum order<input name="minOrder" type="number" min="1" step="1" defaultValue={category.minOrderQuantity} required /></label>
+          <label className="field">Maximum order<input name="maxOrder" type="number" min={category.minOrderQuantity} step="1" defaultValue={category.maxOrderQuantity ?? ""} placeholder="No limit" /></label>
+          <label className="field">Low stock alert at<input name="lowStockAlert" type="number" min="0" step="1" defaultValue={category.lowStockAlert} required /></label>
+          <label className="checkbox-option inventory-list-toggle"><input name="listed" type="checkbox" defaultChecked={category.status === "ACTIVE"} /><span>List this apartment for booking</span></label>
+          <button className="btn" type="submit">Save inventory</button>
+        </form>
+      </section>}
+
+      {tab === "orders" && <section className="card stack">
+        <div className="orders-heading"><div><h2>Orders</h2><p className="listing-meta">{orders.length} booking{orders.length === 1 ? "" : "s"} for this apartment</p></div><a className="btn secondary" href={`/api/admin/apartments/${unit.id}/orders.csv`}>Export CSV</a></div>
+        {orders.length ? <div className="table-scroll"><table className="admin-table"><thead><tr><th>Reference</th><th>Date</th><th>Booker</th><th>Qty</th><th>Total</th><th>Payment</th><th>Stay</th></tr></thead><tbody>{orders.map((order) => <tr key={order.reference}><td>{order.reference}</td><td>{order.createdAt.toLocaleDateString()}</td><td>{order.name}<small>{order.phone} · {order.email}</small></td><td>{order.quantity}</td><td>₦{(order.amountMinor / 100).toLocaleString()}</td><td>{order.paymentStatus}</td><td>{order.stayStatus}</td></tr>)}</tbody></table></div> : <p>No orders yet.</p>}
+      </section>}
+
+      {tab === "customize" && <div className="apartment-customize-grid">
       <div className="card stack">
         <h2>Details</h2>
         <form method="post" action={`/api/admin/apartments/${unit.id}`} className="stack">
@@ -225,6 +254,7 @@ export default async function ApartmentDetailPage({
           </form>
         </div>
       )}
+      </div>}
     </div>
   );
 }

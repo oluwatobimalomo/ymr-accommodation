@@ -15,7 +15,7 @@ export function AdminShell({ actor, children }: { actor: Actor; children: React.
           <span><strong>YMR Accommodation</strong><small>Administration</small></span>
         </Link>
         <p className="admin-nav-label">Workspace</p>
-        <AdminNavigation />
+        <AdminNavigation actor={actor} />
         <div className="admin-sidebar-foot">Young Ministers Retreat</div>
       </aside>
       <div className="admin-workspace">

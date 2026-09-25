@@ -86,7 +86,7 @@ export async function createBookingOrder(input: CreateBookingOrderInput): Promis
   assertNonEmptyName(input.bookerPhone, "Phone number");
   assertNonEmptyName(input.bookerEmail, "Email");
   if (input.items.length === 0) throw new Error("Add at least one apartment to your bag.");
-  if (input.items.length > 12) throw new Error("A single checkout can contain up to 12 apartments.");
+  if (input.items.reduce((total, item) => total + item.occupants.length, 0) > 12) throw new Error("A single checkout can contain up to 12 accommodation spaces.");
   for (const item of input.items) {
     if (item.occupants.length === 0) throw new Error("Add at least one guest to each apartment.");
     for (const occupant of item.occupants) assertNonEmptyName(occupant.name, "Each guest's name");
@@ -101,14 +101,28 @@ export async function createBookingOrder(input: CreateBookingOrderInput): Promis
       if (!lodge || lodge.status !== "ACTIVE") throw new Error("One of the lodges in your bag is no longer available.");
       const [event] = await tx.select().from(events).where(eq(events.id, lodge.eventId)).limit(1);
       if (!event || event.status !== "OPEN") throw new Error("Booking is not currently open for one of the selected lodges.");
-      details.push({ category, lodge, event, item });
+      if (category.mode === "PRIVATE") {
+        for (const occupant of item.occupants) details.push({ category, lodge, event, item: { ...item, occupants: [occupant] } });
+      } else {
+        details.push({ category, lodge, event, item });
+      }
     }
     const first = details[0]!;
     if (details.some((detail) => detail.event.id !== first.event.id || detail.event.currency !== first.event.currency)) {
       throw new Error("All apartments in one checkout must belong to the same event and currency.");
     }
+    const quantities = new Map<string, { category: typeof accommodationCategories.$inferSelect; count: number }>();
+    for (const { category, item } of details) {
+      const current = quantities.get(category.id) ?? { category, count: 0 };
+      current.count += item.occupants.length;
+      quantities.set(category.id, current);
+    }
+    for (const { category, count } of quantities.values()) {
+      if (count < category.minOrderQuantity) throw new Error(`${category.name} requires a minimum order of ${category.minOrderQuantity}.`);
+      if (category.maxOrderQuantity !== null && count > category.maxOrderQuantity) throw new Error(`${category.name} allows at most ${category.maxOrderQuantity} per order.`);
+    }
     const amountMinor = details.reduce((total, { category, item }) => total + (
-      category.pricingModel === "PER_PERSON" ? category.defaultPriceMinor * item.occupants.length : category.defaultPriceMinor
+      category.pricingModel === "PER_PERSON" ? category.defaultPriceMinor * item.occupants.length : category.defaultPriceMinor * item.occupants.length
     ), 0);
     const reference = await nextBookingReference(tx, first.event.id, first.lodge.name);
     const [order] = await tx.insert(bookingOrders).values({
@@ -155,6 +169,7 @@ async function createBookingInTransaction(
       .where(eq(accommodationCategories.id, input.categoryId))
       .limit(1);
     if (!category || category.status !== "ACTIVE") throw new Error("That accommodation category is not available.");
+    if (!checkoutOrderId && (input.occupants.length < category.minOrderQuantity || (category.maxOrderQuantity !== null && input.occupants.length > category.maxOrderQuantity))) throw new Error("The quantity selected is outside this apartment's order limits.");
     if (category.mode === "SHARED" && input.occupants.some((occupant) => occupant.gender === "UNSPECIFIED")) {
       throw new Error("Choose your gender for the shared bedspace so we can confirm it matches the room.");
     }

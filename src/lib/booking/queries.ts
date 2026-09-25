@@ -3,12 +3,14 @@ import { getDb } from "@/db/client";
 import {
   accommodationCategories,
   accommodationUnits,
+  auditLogs,
   bedspaces,
   bookingOccupants,
   bookings,
   bookingOrders,
   facilities,
   inventoryHolds,
+  privateUnitAllocations,
   lodges,
   rooms,
   unitFacilities,
@@ -92,7 +94,7 @@ export async function listActiveCategoriesForLodge(lodgeId: string) {
   const candidateBedspaceIds = bedspaceRows.map((bedspace) => bedspace.bedspaceId);
   const [paidAssignments, heldBedspaces] = await Promise.all([
     candidateBedspaceIds.length ? db.select({ bedspaceId: bookingOccupants.bedspaceId }).from(bookingOccupants).innerJoin(bookings, eq(bookings.id, bookingOccupants.bookingId))
-      .where(and(inArray(bookingOccupants.bedspaceId, candidateBedspaceIds), eq(bookings.paymentStatus, "PAID"))) : [],
+      .where(and(inArray(bookingOccupants.bedspaceId, candidateBedspaceIds), eq(bookings.paymentStatus, "PAID"), sql`${bookings.accommodationStatus} <> 'CANCELLED'`)) : [],
     candidateBedspaceIds.length ? db.select({ bedspaceId: inventoryHolds.bedspaceId }).from(inventoryHolds)
       .where(and(inArray(inventoryHolds.bedspaceId, candidateBedspaceIds), gt(inventoryHolds.expiresAt, new Date()))) : [],
   ]);
@@ -111,6 +113,17 @@ export async function listActiveCategoriesForLodge(lodgeId: string) {
   // Each category maps to (usually) one apartment/unit in the simplified
   // admin model - use its real photo instead of a generic placeholder
   // repeated identically across every category card.
+  const privateUnitIds = unitRows.length ? unitRows.map((unit) => unit.unitId) : [];
+  const now = new Date();
+  const [allocations, privateHolds] = privateUnitIds.length ? await Promise.all([
+    db.select({ unitId: privateUnitAllocations.unitId }).from(privateUnitAllocations).where(and(inArray(privateUnitAllocations.unitId, privateUnitIds), sql`${privateUnitAllocations.releasedAt} is null`)),
+    db.select({ unitId: inventoryHolds.unitId }).from(inventoryHolds).where(and(inArray(inventoryHolds.unitId, privateUnitIds), gt(inventoryHolds.expiresAt, now))),
+  ]) : [[], []];
+  const unavailablePrivateIds = new Set([...allocations.map((row) => row.unitId), ...privateHolds.map((row) => row.unitId)]);
+  const privateAvailableByCategory = new Map<string, number>();
+  for (const unit of unitRows) if (!unavailablePrivateIds.has(unit.unitId)) privateAvailableByCategory.set(unit.categoryId, (privateAvailableByCategory.get(unit.categoryId) ?? 0) + 1);
+  const privateStockByCategory = new Map<string, number>();
+  for (const unit of unitRows) privateStockByCategory.set(unit.categoryId, (privateStockByCategory.get(unit.categoryId) ?? 0) + 1);
   return categoryRows.map((c) => ({
     ...c,
     image: unitByCategory.get(c.id)?.image ?? undefined,
@@ -121,6 +134,10 @@ export async function listActiveCategoriesForLodge(lodgeId: string) {
     facilities: unitByCategory.get(c.id)?.facilities ?? [],
     overviewFacilities: unitByCategory.get(c.id)?.overviewFacilities ?? [],
     bedspaceOptions: bedspacesByCategory.get(c.id) ?? [],
+    availableStock: c.mode === "PRIVATE" ? privateAvailableByCategory.get(c.id) ?? 0 : (bedspacesByCategory.get(c.id) ?? []).filter((bed) => bed.status === "AVAILABLE").length,
+    totalStock: c.mode === "PRIVATE" ? privateStockByCategory.get(c.id) ?? 0 : (bedspacesByCategory.get(c.id) ?? []).filter((bed) => bed.status !== "RETIRED").length,
+    minOrderQuantity: c.minOrderQuantity,
+    maxOrderQuantity: c.maxOrderQuantity,
   }));
 }
 
@@ -158,7 +175,7 @@ export async function getCategoryForBooking(categoryId: string) {
         .select({ bedspaceId: bookingOccupants.bedspaceId, paymentStatus: bookings.paymentStatus })
         .from(bookingOccupants)
         .innerJoin(bookings, eq(bookings.id, bookingOccupants.bookingId))
-        .where(inArray(bookingOccupants.bedspaceId, bedspaceIds))
+        .where(and(inArray(bookingOccupants.bedspaceId, bedspaceIds), sql`${bookings.accommodationStatus} <> 'CANCELLED'`))
     : [];
   const paidBedspaces = new Set(
     assigned.filter((row) => row.paymentStatus === "PAID").map((row) => row.bedspaceId!),
@@ -200,10 +217,12 @@ export async function getBookingByReference(reference: string) {
     if (!orderBookings.length) return null;
     const bookingIds = orderBookings.map((booking) => booking.id);
     const categoryIds = [...new Set(orderBookings.map((booking) => booking.categoryId))];
-    const [occupants, stays] = await Promise.all([
+    const [occupants, stays, guestOperations] = await Promise.all([
       db.select().from(bookingOccupants).where(inArray(bookingOccupants.bookingId, bookingIds)),
       db.select({ categoryId: accommodationCategories.id, categoryName: accommodationCategories.name, lodgeName: lodges.name, coordinatorName: lodges.contactName, coordinatorPhone: lodges.contactPhone, checkInDate: accommodationCategories.checkInDate, checkOutDate: accommodationCategories.checkOutDate })
         .from(accommodationCategories).innerJoin(lodges, eq(lodges.id, accommodationCategories.lodgeId)).where(inArray(accommodationCategories.id, categoryIds)),
+      db.select({ entityId: auditLogs.entityId, action: auditLogs.action, occurredAt: auditLogs.occurredAt }).from(auditLogs)
+        .where(and(inArray(auditLogs.entityId, bookingIds), inArray(auditLogs.action, ["booking.checked_in", "booking.checked_out", "booking.checkin_overridden"]))),
     ]);
     const bedspaceIds = occupants.map((occupant) => occupant.bedspaceId).filter((id): id is string => id !== null);
     const bedspaceLabels = bedspaceIds.length ? await db.select({ id: bedspaces.id, letter: bedspaces.letter, roomName: rooms.name }).from(bedspaces).innerJoin(rooms, eq(rooms.id, bedspaces.roomId)).where(inArray(bedspaces.id, bedspaceIds)) : [];
@@ -215,7 +234,7 @@ export async function getBookingByReference(reference: string) {
     const items = orderBookings.map((itemBooking, index) => {
       const stay = stays.find((candidate) => candidate.categoryId === itemBooking.categoryId);
       const itemOccupants = occupants.filter((occupant) => occupant.bookingId === itemBooking.id);
-      return { reference: itemBooking.reference, lodgeName: stay?.lodgeName ?? "Accommodation", apartmentName: stay?.categoryName ?? "Assigned accommodation", amountMinor: itemBooking.amountMinor, checkInDate: stay?.checkInDate ?? null, checkOutDate: stay?.checkOutDate ?? null, coordinatorName: coordinatorValue(stay?.coordinatorName, stay?.lodgeName), coordinatorPhone: coordinatorValue(stay?.coordinatorPhone, stay?.lodgeName), occupants: itemOccupants.map((occupant) => ({ name: occupant.name, gender: occupant.gender, allocation: bedspaceLabels.find((bedspace) => bedspace.id === occupant.bedspaceId) ? `BDS ${bedspaceLabels.find((bedspace) => bedspace.id === occupant.bedspaceId)!.letter} · ${bedspaceLabels.find((bedspace) => bedspace.id === occupant.bedspaceId)!.roomName}` : "" })), sequence: index + 1 };
+      return { reference: itemBooking.reference, lodgeName: stay?.lodgeName ?? "Accommodation", apartmentName: stay?.categoryName ?? "Assigned accommodation", amountMinor: itemBooking.amountMinor, checkInDate: stay?.checkInDate ?? null, checkOutDate: stay?.checkOutDate ?? null, accommodationStatus: itemBooking.accommodationStatus, actualCheckInAt: guestOperations.find((operation) => operation.entityId === itemBooking.id && (operation.action === "booking.checked_in" || operation.action === "booking.checkin_overridden"))?.occurredAt.toISOString() ?? null, actualCheckOutAt: guestOperations.find((operation) => operation.entityId === itemBooking.id && operation.action === "booking.checked_out")?.occurredAt.toISOString() ?? null, coordinatorName: coordinatorValue(stay?.coordinatorName, stay?.lodgeName), coordinatorPhone: coordinatorValue(stay?.coordinatorPhone, stay?.lodgeName), occupants: itemOccupants.map((occupant) => ({ name: occupant.name, gender: occupant.gender, allocation: bedspaceLabels.find((bedspace) => bedspace.id === occupant.bedspaceId) ? `BDS ${bedspaceLabels.find((bedspace) => bedspace.id === occupant.bedspaceId)!.letter} · ${bedspaceLabels.find((bedspace) => bedspace.id === occupant.bedspaceId)!.roomName}` : "" })), sequence: index + 1 };
     });
     return {
       booking: {
@@ -246,7 +265,7 @@ export async function getBookingByReference(reference: string) {
   }
   const [booking] = await db.select().from(bookings).where(eq(bookings.reference, reference)).limit(1);
   if (!booking) return null;
-  const [occupants, [stay]] = await Promise.all([
+  const [occupants, [stay], guestOperations] = await Promise.all([
     db.select().from(bookingOccupants).where(eq(bookingOccupants.bookingId, booking.id)),
     db.select({
       categoryName: accommodationCategories.name,
@@ -260,10 +279,12 @@ export async function getBookingByReference(reference: string) {
       .innerJoin(lodges, eq(lodges.id, accommodationCategories.lodgeId))
       .where(eq(accommodationCategories.id, booking.categoryId))
       .limit(1),
+    db.select({ action: auditLogs.action, occurredAt: auditLogs.occurredAt }).from(auditLogs)
+      .where(and(eq(auditLogs.entityId, booking.id), inArray(auditLogs.action, ["booking.checked_in", "booking.checked_out", "booking.checkin_overridden"]))),
   ]);
   const bedspaceIds = occupants.map((occupant) => occupant.bedspaceId).filter((id): id is string => id !== null);
   const bedspaceLabels = bedspaceIds.length ? await db.select({ id: bedspaces.id, letter: bedspaces.letter, roomName: rooms.name }).from(bedspaces).innerJoin(rooms, eq(rooms.id, bedspaces.roomId)).where(inArray(bedspaces.id, bedspaceIds)) : [];
-  const item = { reference: booking.reference, lodgeName: stay?.lodgeName ?? "Accommodation", apartmentName: stay?.categoryName ?? "Assigned accommodation", amountMinor: booking.amountMinor, checkInDate: stay?.checkInDate ?? null, checkOutDate: stay?.checkOutDate ?? null, coordinatorName: coordinatorValue(stay?.coordinatorName, stay?.lodgeName), coordinatorPhone: coordinatorValue(stay?.coordinatorPhone, stay?.lodgeName), occupants: occupants.map((occupant) => ({ name: occupant.name, gender: occupant.gender, allocation: bedspaceLabels.find((bedspace) => bedspace.id === occupant.bedspaceId) ? `BDS ${bedspaceLabels.find((bedspace) => bedspace.id === occupant.bedspaceId)!.letter} · ${bedspaceLabels.find((bedspace) => bedspace.id === occupant.bedspaceId)!.roomName}` : "" })), sequence: 1 };
+  const item = { reference: booking.reference, lodgeName: stay?.lodgeName ?? "Accommodation", apartmentName: stay?.categoryName ?? "Assigned accommodation", amountMinor: booking.amountMinor, checkInDate: stay?.checkInDate ?? null, checkOutDate: stay?.checkOutDate ?? null, accommodationStatus: booking.accommodationStatus, actualCheckInAt: guestOperations.find((operation) => operation.action === "booking.checked_in" || operation.action === "booking.checkin_overridden")?.occurredAt.toISOString() ?? null, actualCheckOutAt: guestOperations.find((operation) => operation.action === "booking.checked_out")?.occurredAt.toISOString() ?? null, coordinatorName: coordinatorValue(stay?.coordinatorName, stay?.lodgeName), coordinatorPhone: coordinatorValue(stay?.coordinatorPhone, stay?.lodgeName), occupants: occupants.map((occupant) => ({ name: occupant.name, gender: occupant.gender, allocation: bedspaceLabels.find((bedspace) => bedspace.id === occupant.bedspaceId) ? `BDS ${bedspaceLabels.find((bedspace) => bedspace.id === occupant.bedspaceId)!.letter} · ${bedspaceLabels.find((bedspace) => bedspace.id === occupant.bedspaceId)!.roomName}` : "" })), sequence: 1 };
   return {
     booking,
     occupants,

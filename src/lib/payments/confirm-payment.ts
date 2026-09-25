@@ -1,7 +1,11 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
-import { bookingOrders, bookings, inventoryHolds, paymentTransactions, privateUnitAllocations, supportTicketMessages, supportTickets } from "@/db/schema";
+import { accommodationCategories, bedspaces, bookingOrders, bookingOccupants, bookings, emailOutbox, inventoryHolds, lodges, paymentTransactions, privateUnitAllocations, rooms, supportTicketMessages, supportTickets } from "@/db/schema";
 import { recordAudit } from "@/lib/audit";
+import { formatNaira } from "@/lib/format-currency";
+import { formatDateOnly } from "@/lib/format-date";
+import { bookingEmailMessage } from "@/lib/email/booking-message";
+import { processPendingEmails } from "@/lib/email/outbox";
 import type { VerifyTransactionResult } from "./paystack";
 
 /**
@@ -65,7 +69,7 @@ export async function confirmPaymentFromVerifiedResult(verified: VerifyTransacti
   if (verified.status !== "success") return { status: "not_successful" };
 
   const db = getDb();
-  return db.transaction(async (tx) => {
+  const outcome = await db.transaction<ConfirmPaymentOutcome>(async (tx): Promise<ConfirmPaymentOutcome> => {
     const [order] = await tx.select().from(bookingOrders).where(eq(bookingOrders.reference, verified.reference)).for("update").limit(1);
     if (order) return confirmOrderPayment(tx, order, verified);
 
@@ -187,6 +191,15 @@ export async function confirmPaymentFromVerifiedResult(verified: VerifyTransacti
     // The hold's job (protecting the bedspace until payment) is done; the
     // permanent record is booking_occupants, so the hold row is no longer needed.
     await tx.delete(inventoryHolds).where(eq(inventoryHolds.bookingId, booking.id));
+    await enqueueBookingEmails(tx, {
+      dedupeBase: booking.id,
+      reference: booking.reference,
+      recipientName: booking.bookerName,
+      recipientEmail: booking.bookerEmail,
+      bookerName: booking.bookerName,
+      amountMinor: booking.amountMinor,
+      bookingIds: [booking.id],
+    });
 
     await recordAudit(tx, {
       actor: null,
@@ -198,6 +211,10 @@ export async function confirmPaymentFromVerifiedResult(verified: VerifyTransacti
     });
     return { status: "confirmed" };
   });
+  if (outcome.status === "confirmed" || outcome.status === "already_confirmed") {
+    try { await processPendingEmails(2); } catch (error) { console.error("Could not process the booking email outbox:", error); }
+  }
+  return outcome;
 }
 
 async function confirmOrderPayment(
@@ -258,7 +275,48 @@ async function confirmOrderPayment(
   await tx.update(bookingOrders).set({ paymentStatus: "PAID", updatedAt: new Date() }).where(eq(bookingOrders.id, order.id));
   await tx.update(bookings).set({ paymentStatus: "PAID", accommodationStatus: "ALLOCATED", allocationStatus: "FULLY_ALLOCATED", updatedAt: new Date() }).where(eq(bookings.checkoutOrderId, order.id));
   await tx.delete(inventoryHolds).where(inArray(inventoryHolds.bookingId, orderBookings.map((booking) => booking.id)));
+  await enqueueBookingEmails(tx, {
+    dedupeBase: order.id,
+    reference: order.reference,
+    recipientName: order.bookerName,
+    recipientEmail: order.bookerEmail,
+    bookerName: order.bookerName,
+    amountMinor: order.amountMinor,
+    bookingIds: orderBookings.map((booking) => booking.id),
+    gift: order.giftRecipientName ? { name: order.giftRecipientName, email: order.giftRecipientEmail ?? "" } : undefined,
+  });
   await recordAudit(tx, { actor: null, action: "payment.confirmed", entityType: "booking_order", entityId: order.id,
     before: { paymentStatus: order.paymentStatus }, after: { paymentStatus: "PAID", reference: verified.reference, bookingCount: orderBookings.length } });
   return { status: "confirmed" };
+}
+
+async function enqueueBookingEmails(
+  tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0],
+  input: { dedupeBase: string; reference: string; recipientName: string; recipientEmail: string; bookerName: string; amountMinor: number; bookingIds: string[]; gift?: { name: string; email: string } },
+) {
+  const bookingRows = await tx.select({ id: bookings.id, reference: bookings.reference, categoryName: accommodationCategories.name, lodgeId: lodges.id, lodgeName: lodges.name, lodgeAddress: lodges.address, lodgeImages: lodges.images, checkInDate: accommodationCategories.checkInDate, checkOutDate: accommodationCategories.checkOutDate, coordinatorName: lodges.contactName, coordinatorPhone: lodges.contactPhone })
+    .from(bookings).innerJoin(accommodationCategories, eq(accommodationCategories.id, bookings.categoryId)).innerJoin(lodges, eq(lodges.id, accommodationCategories.lodgeId)).where(inArray(bookings.id, input.bookingIds));
+  const occupantRows = await tx.select({ bookingId: bookingOccupants.bookingId, name: bookingOccupants.name, roomName: rooms.name, bedspace: bedspaces.letter })
+    .from(bookingOccupants).leftJoin(bedspaces, eq(bedspaces.id, bookingOccupants.bedspaceId)).leftJoin(rooms, eq(rooms.id, bedspaces.roomId)).where(inArray(bookingOccupants.bookingId, input.bookingIds));
+  const items = bookingRows.map((row) => ({
+    reference: row.reference,
+    lodgeId: row.lodgeId,
+    apartmentName: row.categoryName,
+    lodgeName: row.lodgeName,
+    lodgeAddress: row.lodgeAddress,
+    lodgeImage: row.lodgeImages[0] ?? null,
+    allocationLabels: occupantRows.filter((occupant) => occupant.bookingId === row.id && occupant.bedspace).map((occupant) => `${occupant.roomName ?? "Room"} · BDS ${occupant.bedspace}`),
+    checkIn: formatDateOnly(row.checkInDate),
+    checkOut: formatDateOnly(row.checkOutDate),
+    coordinatorName: row.coordinatorName ?? "",
+    coordinatorPhone: row.coordinatorPhone ?? "",
+  }));
+  const messages = [
+    { dedupeKey: `${input.dedupeBase}:booker`, recipientName: input.recipientName, recipientEmail: input.recipientEmail, gift: false },
+    ...(input.gift?.email ? [{ dedupeKey: `${input.dedupeBase}:gift`, recipientName: input.gift.name, recipientEmail: input.gift.email, gift: true }] : []),
+  ];
+  for (const message of messages) {
+    const content = await bookingEmailMessage({ recipientName: message.recipientName, bookerName: input.bookerName, reference: input.reference, amount: formatNaira(input.amountMinor), items, gift: message.gift });
+    await tx.insert(emailOutbox).values({ dedupeKey: message.dedupeKey, recipientEmail: message.recipientEmail, subject: content.subject, textBody: content.text, htmlBody: content.html, attachments: content.attachments }).onConflictDoNothing({ target: emailOutbox.dedupeKey });
+  }
 }

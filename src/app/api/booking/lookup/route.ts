@@ -16,7 +16,9 @@ export async function POST(request: Request) {
     if (!ticketId || !phone) return NextResponse.json({ error: "Enter your Ticket ID and booking phone number." }, { status: 400, headers: { "Cache-Control": "no-store" } });
 
     const result = await getBookingByReference(ticketId);
-    if (!result || normalizePhone(result.booking.bookerPhone) !== normalizePhone(phone)) {
+    const matchesBooker = result && normalizePhone(result.booking.bookerPhone) === normalizePhone(phone);
+    const matchesGiftRecipient = result?.giftRecipient?.phone && normalizePhone(result.giftRecipient.phone) === normalizePhone(phone);
+    if (!result || (!matchesBooker && !matchesGiftRecipient)) {
       return NextResponse.json({ error: "We couldn’t find a booking matching those details." }, { status: 404, headers: { "Cache-Control": "no-store" } });
     }
 
