@@ -1,4 +1,4 @@
-import { bigint, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { bookings } from "./booking";
 import { bookingOrders } from "./booking-orders";
 import { transactionStatus } from "./enums";
@@ -27,6 +27,7 @@ export const paymentTransactions = pgTable("payment_transactions", {
   rawPayload: jsonb("raw_payload"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
+  index("payment_transactions_created_at_idx").on(t.createdAt),
   // Initialization attempts may not yet have a gateway id. PostgreSQL's
   // partial index enforces uniqueness only once Paystack supplies one.
   uniqueIndex("payment_transactions_paystack_id_uq")

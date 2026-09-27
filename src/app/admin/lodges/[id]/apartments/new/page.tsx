@@ -5,6 +5,7 @@ import { ApartmentForm } from "@/components/ApartmentForm";
 import { requireActor } from "@/lib/auth/require";
 import { listFacilities } from "@/lib/inventory/facilities";
 import { getLodge } from "@/lib/inventory/lodges";
+import { can } from "@/lib/authz/authorize";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,8 @@ export default async function NewApartmentPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string }>;
 }) {
-  await requireActor();
+  const actor = await requireActor();
+  if (!can(actor, "inventory.write")) notFound();
   const { id } = await params;
   const { error } = await searchParams;
   const lodge = await getLodge(id);

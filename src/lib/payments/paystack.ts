@@ -4,7 +4,7 @@ const PAYSTACK_BASE_URL = "https://api.paystack.co";
 
 function secretKey(): string {
   const key = process.env.PAYSTACK_SECRET_KEY;
-  if (!key) throw new Error("Online payment is temporarily unavailable. Please try again later.");
+  if (!key) throw new Error("PAYSTACK_SECRET_KEY is not configured.");
   return key;
 }
 
@@ -58,6 +58,51 @@ export interface VerifyTransactionResult {
   paidAt: string | null;
   paystackTransactionId: number;
   raw: unknown;
+}
+
+export interface PaystackListedTransaction {
+  id: string;
+  reference: string;
+  status: string;
+  amountMinor: number;
+  currency: string;
+  createdAt: string | null;
+  paidAt: string | null;
+}
+
+/** Read Paystack's transactions for a bounded date range. No payment state is changed. */
+export async function listTransactions(input: { from: string; to: string; maxPages?: number }) {
+  const maxPages = input.maxPages ?? 20;
+  const transactions: PaystackListedTransaction[] = [];
+  let page = 1;
+  let pageCount = 1;
+  do {
+    const query = new URLSearchParams({ from: input.from, to: input.to, perPage: "100", page: String(page) });
+    const res = await fetch(`${PAYSTACK_BASE_URL}/transaction?${query}`, {
+      headers: { Authorization: `Bearer ${secretKey()}` },
+      cache: "no-store",
+    });
+    const payload = await res.json();
+    if (!res.ok || !payload.status || !Array.isArray(payload.data)) {
+      throw new Error(payload.message || "Could not load transactions from Paystack.");
+    }
+    for (const row of payload.data) {
+      if ((typeof row.id !== "number" && typeof row.id !== "string") || typeof row.reference !== "string") continue;
+      transactions.push({
+        id: String(row.id),
+        reference: row.reference,
+        status: String(row.status ?? "unknown").toLowerCase(),
+        amountMinor: Number(row.amount),
+        currency: String(row.currency ?? ""),
+        createdAt: typeof row.created_at === "string" ? row.created_at : null,
+        paidAt: typeof row.paid_at === "string" ? row.paid_at : null,
+      });
+    }
+    pageCount = Math.max(1, Number(payload.meta?.pageCount) || 1);
+    page += 1;
+  } while (page <= pageCount && page <= maxPages);
+
+  return { transactions, truncated: pageCount > maxPages, pageCount };
 }
 
 /** GET /transaction/verify/:reference - the authoritative source of truth for a transaction's outcome. Never trust the browser callback alone. */

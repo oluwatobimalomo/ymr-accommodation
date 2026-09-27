@@ -38,6 +38,7 @@ export const theme = {
     display: '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif',
     body: '"Avenir Next", Avenir, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
   },
+  type: { pageTitle: "clamp(1.5rem, 1.25rem + 1vw, 2rem)", section: "clamp(1.2rem, 1.08rem + .55vw, 1.5rem)", card: "1rem", body: "1rem", meta: ".875rem", label: ".875rem", navigation: ".9375rem", button: ".875rem", eyebrow: ".7rem" },
   radius: { sm: "6px", md: "12px", lg: "20px", pill: "999px" },
   space: { 1: "4px", 2: "8px", 3: "12px", 4: "16px", 5: "24px", 6: "32px", 7: "48px", 8: "72px" },
   layout: { maxWidth: "1240px", tapTarget: "44px" },

@@ -8,6 +8,7 @@ import { formatNaira } from "@/lib/format-currency";
 import { getDb } from "@/db/client";
 import { paymentTransactions } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { getOccupantReallocationChoices, listReallocationHistory } from "@/lib/booking/reallocation";
 
 export const dynamic = "force-dynamic";
 
@@ -16,15 +17,16 @@ export default async function AdminBookingDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; reallocate?: string }>;
 }) {
   const actor = await requireActor();
   const { id } = await params;
-  const { error } = await searchParams;
+  const { error, reallocate: selectedOccupantId } = await searchParams;
   const data = await getBookingDetail(actor, id);
   if (!data) notFound();
   const { booking, occupants, category, checkoutOrder, checkoutItems, keyRecords } = data;
-  const transactions = await getDb().select().from(paymentTransactions).where(checkoutOrder ? eq(paymentTransactions.checkoutOrderId, checkoutOrder.id) : eq(paymentTransactions.bookingId, id));
+  const canSeeFinancials = actor.globalPermissions.has("payment.read") || actor.scopedPermissions.has("payment.read");
+  const transactions = canSeeFinancials ? await getDb().select().from(paymentTransactions).where(checkoutOrder ? eq(paymentTransactions.checkoutOrderId, checkoutOrder.id) : eq(paymentTransactions.bookingId, id)) : [];
   const canCancel = can(actor, "booking.cancel") && booking.paymentStatus !== "CANCELLED" && booking.accommodationStatus !== "CHECKED_IN" && booking.accommodationStatus !== "CHECKED_OUT";
   const lodgeScope = { lodgeId: category?.lodgeId };
   const isReadyForCheckIn = booking.paymentStatus === "PAID" && booking.allocationStatus === "FULLY_ALLOCATED";
@@ -32,6 +34,10 @@ export default async function AdminBookingDetailPage({
   const canCheckOut = can(actor, "checkout.perform", lodgeScope);
   const canSeeKeys = can(actor, "keys.read", lodgeScope);
   const canIssueKeys = can(actor, "keys.issue", lodgeScope);
+  const canReallocate = can(actor, "booking.reallocate", lodgeScope);
+  const reallocationHistory = await listReallocationHistory(actor, id);
+  const selectedOccupant = canReallocate ? occupants.find((occupant) => occupant.id === selectedOccupantId && occupant.bedspaceId) : undefined;
+  const reallocationChoices = selectedOccupant ? await getOccupantReallocationChoices(actor, id, selectedOccupant.id) : [];
   const summaryAmount = checkoutOrder?.amountMinor ?? booking.amountMinor;
   const summaryCount = checkoutOrder ? checkoutItems.length : 1;
 
@@ -40,24 +46,26 @@ export default async function AdminBookingDetailPage({
       <Link className="booking-detail-back" href="/admin/bookings">&larr; All bookings</Link>
       <header className="booking-detail-heading">
         <div><span className="eyebrow">Booking reference</span><h1>{booking.reference}</h1></div>
-        <div className="booking-status-tags"><span className={`status-pill status-${booking.paymentStatus.toLowerCase()}`}>{booking.paymentStatus}</span><span className={`status-pill status-${booking.accommodationStatus.toLowerCase()}`}>{booking.accommodationStatus.replace(/_/g, " ")}</span></div>
+        <div className="booking-status-tags">{canSeeFinancials && <span className={`status-pill status-${booking.paymentStatus.toLowerCase()}`}>{booking.paymentStatus}</span>}<span className={`status-pill status-${booking.accommodationStatus.toLowerCase()}`}>{booking.accommodationStatus.replace(/_/g, " ")}</span></div>
       </header>
       <ErrorBanner error={error} />
 
       <section className="card booking-summary-card">
         <div className="booking-summary-primary"><span className="eyebrow">Booked by</span><strong>{booking.bookerName}</strong><p>{booking.bookerPhone} <span>·</span> {booking.bookerEmail}</p></div>
         <div className="booking-summary-stay"><span className="eyebrow">Accommodation</span><strong>{category?.name || "Accommodation"}</strong><span>{summaryCount === 1 ? "1 stay" : `${summaryCount} stays in this order`}</span></div>
-        <div className="booking-summary-total"><span className="eyebrow">{checkoutOrder ? "Order total" : "Booking total"}</span><strong>{formatNaira(summaryAmount)}</strong>{checkoutOrder && <span>One payment · {checkoutOrder.paymentStatus.toLowerCase()}</span>}</div>
+        {canSeeFinancials && <div className="booking-summary-total"><span className="eyebrow">{checkoutOrder ? "Order total" : "Booking total"}</span><strong>{formatNaira(summaryAmount)}</strong>{checkoutOrder && <span>One payment · {checkoutOrder.paymentStatus.toLowerCase()}</span>}</div>}
       </section>
 
       {checkoutOrder && <details className="card booking-order-disclosure">
         <summary>View the {checkoutItems.length} accommodations in this order</summary>
-        <ul className="checkout-item-list">{checkoutItems.map((item) => <li key={item.id}><Link href={`/admin/bookings/${item.id}`}>{item.lodgeName} · {item.categoryName}</Link><span>{item.paymentStatus} · {item.accommodationStatus.replace(/_/g, " ")}</span></li>)}</ul>
+        <ul className="checkout-item-list">{checkoutItems.map((item) => <li key={item.id}><Link href={`/admin/bookings/${item.id}`}>{item.lodgeName} · {item.categoryName}</Link><span>{canSeeFinancials && `${item.paymentStatus} · `}{item.accommodationStatus.replace(/_/g, " ")}</span></li>)}</ul>
       </details>}
 
-      <section className="card booking-occupants-card">
+      <section className="card booking-occupants-card" id="occupants">
         <div className="booking-section-heading"><div><span className="eyebrow">People staying</span><h2>Occupants</h2></div><span>{occupants.length}</span></div>
         <div className="booking-occupant-list">{occupants.map((occupant) => <article className="booking-occupant-row" key={occupant.id}><div><strong>{occupant.name}</strong><span>{occupant.gender === "UNSPECIFIED" ? "Gender not provided" : occupant.gender.toLowerCase()}</span></div><div>{occupant.phone && <span>{occupant.phone}</span>}{occupant.email && <span>{occupant.email}</span>}</div><small>{occupant.bedspaceId || occupant.roomId || occupant.unitId ? "Allocated" : "Not allocated"}</small></article>)}</div>
+        {canReallocate && occupants.some((occupant) => occupant.bedspaceId) && <div className="occupant-reallocation-list"><h3>Reallocate a guest</h3><p>Transfers stay within the same shared accommodation category. Return any issued key first.</p>{occupants.filter((occupant) => occupant.bedspaceId).map((occupant) => <article key={occupant.id} className="occupant-reallocation-row"><strong>{occupant.name}</strong>{selectedOccupant?.id === occupant.id ? <form method="post" action={`/api/admin/bookings/${booking.id}`} className="occupant-reallocation-form"><input type="hidden" name="intent" value="reallocate"/><input type="hidden" name="occupantId" value={occupant.id}/><label className="field"><span>Destination bedspace</span><select name="targetBedspaceId" required defaultValue=""><option value="" disabled>Select an available bedspace</option>{reallocationChoices.map((choice) => <option key={choice.bedspaceId} value={choice.bedspaceId}>{choice.label}</option>)}</select></label><label className="field"><span>Reason for move</span><input name="reason" required minLength={5} maxLength={500} placeholder="Explain why this guest is moving"/></label><button className="btn" type="submit" disabled={!reallocationChoices.length}>Move guest</button>{!reallocationChoices.length && <small>No other available bedspaces in this accommodation category.</small>}<Link className="text-button" href={`/admin/bookings/${booking.id}#occupants`}>Cancel</Link></form> : <Link className="btn secondary" href={`/admin/bookings/${booking.id}?reallocate=${occupant.id}#occupants`}>Choose destination</Link>}</article>)}</div>}
+        {reallocationHistory.length > 0 && <div className="reallocation-history"><h3>Allocation history</h3>{reallocationHistory.map((move) => <article key={move.id}><strong>{move.occupantName}</strong><span>{move.fromLabel} · Bedspace {move.fromLetter} <span aria-hidden="true">→</span> {move.toLabel} · Bedspace {move.toLetter}</span><small>{new Date(move.movedAt).toLocaleString()} · {move.reason}</small></article>)}</div>}
       </section>
 
       <section className="card booking-operations-card">

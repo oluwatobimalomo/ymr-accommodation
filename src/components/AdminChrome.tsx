@@ -2,9 +2,10 @@ import Link from "next/link";
 import type { Actor } from "@/lib/authz/authorize";
 import { AdminNavigation } from "@/components/AdminNavigation";
 import { SupportNotifications } from "@/components/SupportNotifications";
+import { getRoleDefinition } from "@/lib/authz/roles";
 
 export function AdminShell({ actor, children }: { actor: Actor; children: React.ReactNode }) {
-  const roleLabel = actor.roleKeys.map((role) => role.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())).join(", ") || "Staff";
+  const roleLabel = actor.roleKeys.map((role) => getRoleDefinition(role)?.name ?? role.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())).join(", ") || "Staff";
   const initials = actor.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase();
 
   return (

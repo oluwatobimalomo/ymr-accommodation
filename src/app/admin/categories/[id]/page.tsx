@@ -19,6 +19,7 @@ export default async function CategoryDetailPage({
   searchParams: Promise<{ lodgeId?: string; error?: string }>;
 }) {
   const actor = await requireActor();
+  if (!can(actor, "inventory.read")) notFound();
   const { id } = await params;
   const { lodgeId, error } = await searchParams;
   const category = await getCategory(id);

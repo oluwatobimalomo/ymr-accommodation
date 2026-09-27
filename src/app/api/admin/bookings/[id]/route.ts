@@ -1,5 +1,6 @@
 import { handleAdminAction } from "@/lib/admin-action";
 import { cancelBooking, checkInBooking, checkOutBooking, issueOccupantKey, updateKeyCustody } from "@/lib/booking/admin-queries";
+import { reallocateOccupant } from "@/lib/booking/reallocation";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -10,6 +11,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     if (intent === "check-in") await checkInBooking(actor, id, String(form.get("reason") ?? ""));
     if (intent === "check-out") await checkOutBooking(actor, id);
+    if (intent === "reallocate") await reallocateOccupant(actor, id, String(form.get("occupantId") ?? ""), String(form.get("targetBedspaceId") ?? ""), String(form.get("reason") ?? ""));
     if (intent === "issue-key") await issueOccupantKey(actor, id, String(form.get("occupantId") ?? ""), String(form.get("keyLabel") ?? ""));
     if (intent === "return-key") await updateKeyCustody(actor, String(form.get("recordId") ?? ""), "return", String(form.get("note") ?? ""));
     if (intent === "missing-key") await updateKeyCustody(actor, String(form.get("recordId") ?? ""), "missing", String(form.get("note") ?? ""));

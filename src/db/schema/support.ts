@@ -1,4 +1,4 @@
-import { boolean, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { bookings } from "./booking";
 import { lodges } from "./inventory";
 import { ticketCategory, ticketStatus } from "./enums";
@@ -19,7 +19,10 @@ export const supportTickets = pgTable("support_tickets", {
   assignedTo: uuid("assigned_to"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("support_tickets_status_created_idx").on(t.status, t.createdAt),
+  index("support_tickets_booking_idx").on(t.bookingId),
+]);
 
 /** Append-only activity/message history for a ticket - staff replies and customer follow-ups. */
 export const supportTicketMessages = pgTable("support_ticket_messages", {

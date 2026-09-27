@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { accommodationCategories, accommodationUnits, bedspaces, rooms } from "./inventory";
 import { events } from "./events";
 import { bookingOrders } from "./booking-orders";
+import { users } from "./auth";
 import { accommodationStatus, allocationStatus, occupantGender, paymentStatus } from "./enums";
 
 /**
@@ -22,7 +23,12 @@ export const inventoryHolds = pgTable("inventory_holds", {
   unitId: uuid("unit_id").references(() => accommodationUnits.id, { onDelete: "cascade" }),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("inventory_holds_expires_at_idx").on(t.expiresAt),
+  index("inventory_holds_bedspace_idx").on(t.bedspaceId),
+  index("inventory_holds_room_idx").on(t.roomId),
+  index("inventory_holds_unit_idx").on(t.unitId),
+]);
 
 /**
  * Payment, accommodation and allocation status are three separate columns
@@ -50,7 +56,12 @@ export const bookings = pgTable("bookings", {
   allocationStatus: allocationStatus("allocation_status").notNull().default("NOT_ALLOCATED"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("bookings_created_at_idx").on(t.createdAt),
+  index("bookings_category_created_idx").on(t.categoryId, t.createdAt),
+  index("bookings_event_created_idx").on(t.eventId, t.createdAt),
+  index("bookings_payment_created_idx").on(t.paymentStatus, t.createdAt),
+]);
 
 /**
  * Every occupant is its own row, independent of the primary booker (brief
@@ -71,7 +82,25 @@ export const bookingOccupants = pgTable("booking_occupants", {
   roomId: uuid("room_id").references(() => rooms.id, { onDelete: "restrict" }),
   unitId: uuid("unit_id").references(() => accommodationUnits.id, { onDelete: "restrict" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("booking_occupants_booking_id_idx").on(t.bookingId),
+  index("booking_occupants_bedspace_idx").on(t.bedspaceId),
+]);
+
+/** Immutable history of an occupant's shared-bedspace transfers. */
+export const reallocationHistory = pgTable("reallocation_history", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  bookingId: uuid("booking_id").notNull().references(() => bookings.id, { onDelete: "restrict" }),
+  occupantId: uuid("occupant_id").notNull().references(() => bookingOccupants.id, { onDelete: "restrict" }),
+  fromBedspaceId: uuid("from_bedspace_id").notNull().references(() => bedspaces.id, { onDelete: "restrict" }),
+  toBedspaceId: uuid("to_bedspace_id").notNull().references(() => bedspaces.id, { onDelete: "restrict" }),
+  reason: text("reason").notNull(),
+  movedAt: timestamp("moved_at", { withTimezone: true }).notNull().defaultNow(),
+  movedBy: uuid("moved_by").references(() => users.id, { onDelete: "set null" }),
+}, (t) => [
+  index("reallocation_history_booking_idx").on(t.bookingId, t.movedAt),
+  index("reallocation_history_occupant_idx").on(t.occupantId, t.movedAt),
+]);
 
 /**
  * Durable claim for private whole-unit inventory. Multiple occupants from a

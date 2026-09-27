@@ -53,7 +53,7 @@ export function ImageUploadInput({ id, name = "images", multiple = true }: { id:
   return (
     <span className="image-upload-control">
       <input ref={inputRef} id={id} name={name} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple={multiple} onChange={() => void prepareFiles()} />
-      <small aria-live="polite">{processing ? `Optimizing ${selectedCount} ${selectedCount === 1 ? "photo" : "photos"}…` : `${selectedCount ? `${selectedCount} ${selectedCount === 1 ? "photo" : "photos"} selected. ` : multiple ? "Select multiple photos at once. " : "Select a photo. "}Photos are resized on your device for faster loading.`}</small>
+      {processing && <small aria-live="polite">Optimizing {selectedCount} {selectedCount === 1 ? "photo" : "photos"}…</small>}
     </span>
   );
 }

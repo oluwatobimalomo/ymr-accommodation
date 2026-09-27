@@ -1,5 +1,7 @@
 CREATE TYPE key_custody_status AS ENUM ('ISSUED', 'RETURNED', 'MISSING');
 
+--> statement-breakpoint
+
 CREATE TABLE key_custody (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   booking_id uuid NOT NULL REFERENCES bookings(id) ON DELETE RESTRICT,
@@ -16,7 +18,18 @@ CREATE TABLE key_custody (
   note text NOT NULL DEFAULT ''
 );
 
+--> statement-breakpoint
+
 CREATE INDEX key_custody_booking_idx ON key_custody (booking_id, issued_at);
+
+--> statement-breakpoint
+
 CREATE INDEX key_custody_occupant_idx ON key_custody (occupant_id, issued_at);
+
+--> statement-breakpoint
+
 CREATE UNIQUE INDEX key_custody_open_label_uq ON key_custody (lodge_id, lower(key_label)) WHERE status = 'ISSUED';
+
+--> statement-breakpoint
+
 CREATE UNIQUE INDEX key_custody_open_occupant_uq ON key_custody (occupant_id) WHERE status = 'ISSUED';

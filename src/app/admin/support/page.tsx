@@ -13,10 +13,21 @@ const STATUS_LABEL: Record<string, string> = {
   ESCALATED: "Escalated", RESOLVED: "Resolved", CLOSED: "Closed",
 };
 
+function SupportMetricIcon({ kind }: { kind: "inbox" | "attention" | "priority" | "closed" }) {
+  const common = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  const paths = {
+    inbox: <><path d="M4 5h16v14H4z"/><path d="M4 13h4l2 3h4l2-3h4"/></>,
+    attention: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5m0 4h.01"/></>,
+    priority: <><path d="m12 3 10 18H2L12 3Z"/><path d="M12 9v5m0 3h.01"/></>,
+    closed: <><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></>,
+  };
+  return <svg aria-hidden="true" viewBox="0 0 24 24" {...common}>{paths[kind]}</svg>;
+}
+
 export default async function AdminSupportPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const actor = await requireActor();
   const params = await searchParams;
-  const [tickets, lodges] = await Promise.all([listTickets(actor, params), listLodges()]);
+  const [tickets, lodges] = await Promise.all([listTickets(actor, params), listLodges(actor)]);
   const openCount = tickets.filter((t) => !["RESOLVED", "CLOSED"].includes(t.status)).length;
   const escalatedCount = tickets.filter((t) => t.status === "ESCALATED").length;
   const closedCount = tickets.filter((t) => t.status === "CLOSED").length;
@@ -26,10 +37,10 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
       <div className="admin-page-heading"><div><span className="eyebrow">Guest care</span><h1>Support inbox</h1><p>Track requests, coordinate follow-up, and record resolutions.</p></div></div>
       <ErrorBanner error={params.error} />
       <section className="metric-grid support-metrics" aria-label="Support ticket metrics">
-        <article className="metric-card"><span>Matching tickets</span><strong>{tickets.length}</strong><small>Latest 100 matching requests</small></article>
-        <article className="metric-card"><span>Needs attention</span><strong>{openCount}</strong><small>Open, in progress, or awaiting follow-up</small></article>
-        <article className="metric-card"><span>Escalated</span><strong>{escalatedCount}</strong><small>Priority follow-up required</small></article>
-        <article className="metric-card"><span>Closed</span><strong>{closedCount}</strong><small>Resolved and documented</small></article>
+        <article className="metric-card"><span className="support-metric-icon"><SupportMetricIcon kind="inbox"/>Matching tickets</span><strong>{tickets.length}</strong></article>
+        <article className="metric-card"><span className="support-metric-icon"><SupportMetricIcon kind="attention"/>Needs attention</span><strong>{openCount}</strong></article>
+        <article className="metric-card"><span className="support-metric-icon"><SupportMetricIcon kind="priority"/>Escalated</span><strong>{escalatedCount}</strong></article>
+        <article className="metric-card"><span className="support-metric-icon"><SupportMetricIcon kind="closed"/>Closed</span><strong>{closedCount}</strong></article>
       </section>
       <form method="get" className="directory-tools support-filters" aria-label="Filter support tickets">
         <div className="admin-filter-heading"><div><span className="eyebrow">Stay on top of requests</span><strong>Inbox filters</strong></div><span>Results update when a filter changes</span></div>

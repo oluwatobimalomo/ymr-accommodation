@@ -3,10 +3,12 @@ import { notFound } from "next/navigation";
 import { ErrorBanner } from "@/components/AdminChrome";
 import { Badge } from "@/components/Badge";
 import { ImageThumb } from "@/components/ImageThumb";
+import { ApartmentOrdersTable } from "@/components/ApartmentOrdersTable";
 import { ImageUploadInput } from "@/components/ImageUploadInput";
 import { ApartmentStayDates } from "@/components/ApartmentStayDates";
 import { ApartmentAmenitiesForm } from "@/components/ApartmentAmenitiesForm";
 import { requireActor } from "@/lib/auth/require";
+import { can } from "@/lib/authz/authorize";
 import { getApartmentDetail, getApartmentInventory, getApartmentOrders } from "@/lib/inventory/apartments";
 import { listFacilities } from "@/lib/inventory/facilities";
 import { getLodge } from "@/lib/inventory/lodges";
@@ -30,6 +32,7 @@ export default async function ApartmentDetailPage({
   searchParams: Promise<{ error?: string; tab?: string }>;
 }) {
   const actor = await requireActor();
+  if (!can(actor, "inventory.read")) notFound();
   const { id } = await params;
   const { error, tab: requestedTab } = await searchParams;
   const tab = requestedTab === "orders" || requestedTab === "inventory" ? requestedTab : "customize";
@@ -67,36 +70,24 @@ export default async function ApartmentDetailPage({
           <label className="field">Minimum order<input name="minOrder" type="number" min="1" step="1" defaultValue={category.minOrderQuantity} required /></label>
           <label className="field">Maximum order<input name="maxOrder" type="number" min={category.minOrderQuantity} step="1" defaultValue={category.maxOrderQuantity ?? ""} placeholder="No limit" /></label>
           <label className="field">Low stock alert at<input name="lowStockAlert" type="number" min="0" step="1" defaultValue={category.lowStockAlert} required /></label>
-          <label className="checkbox-option inventory-list-toggle"><input name="listed" type="checkbox" defaultChecked={category.status === "ACTIVE"} /><span>List this apartment for booking</span></label>
+          <label className="checkbox-option inventory-list-toggle"><input name="listed" type="checkbox" defaultChecked={category.status === "ACTIVE"} /><span>{category.status === "ACTIVE" ? "Listed for guest booking" : "Archived from guest booking"}<small>Unlisting hides this apartment from new bookings and preserves its order history.</small></span></label>
           <button className="btn" type="submit">Save inventory</button>
         </form>
       </section>}
 
       {tab === "orders" && <section className="card stack">
-        <div className="orders-heading"><div><h2>Orders</h2><p className="listing-meta">{orders.length} booking{orders.length === 1 ? "" : "s"} for this apartment</p></div><a className="btn secondary" href={`/api/admin/apartments/${unit.id}/orders.csv`}>Export CSV</a></div>
-        {orders.length ? <div className="table-scroll"><table className="admin-table"><thead><tr><th>Reference</th><th>Date</th><th>Booker</th><th>Qty</th><th>Total</th><th>Payment</th><th>Stay</th></tr></thead><tbody>{orders.map((order) => <tr key={order.reference}><td>{order.reference}</td><td>{order.createdAt.toLocaleDateString()}</td><td>{order.name}<small>{order.phone} · {order.email}</small></td><td>{order.quantity}</td><td>₦{(order.amountMinor / 100).toLocaleString()}</td><td>{order.paymentStatus}</td><td>{order.stayStatus}</td></tr>)}</tbody></table></div> : <p>No orders yet.</p>}
+        <div className="orders-heading"><div><h2>Orders</h2><p className="listing-meta">{orders.length} booking{orders.length === 1 ? "" : "s"} for this apartment</p></div></div>
+        {orders.length ? <ApartmentOrdersTable orders={orders.map((order) => ({ ...order, createdAt: order.createdAt.toISOString() }))} /> : <p>No orders yet.</p>}
       </section>}
 
       {tab === "customize" && <div className="apartment-customize-grid">
-      <div className="card stack">
+      <div className="card stack apartment-customize-details">
         <h2>Details</h2>
         <form method="post" action={`/api/admin/apartments/${unit.id}`} className="stack">
           <input type="hidden" name="intent" value="update" />
           <div className="field">
             <label htmlFor="name">Name</label>
             <input id="name" name="name" defaultValue={unit.name} required />
-          </div>
-          <div className="field">
-            <label htmlFor="priceNaira">Total listed price for this stay {category.pricingModel === "PER_PERSON" ? "(per bedspace, ₦)" : "(per apartment, ₦)"}</label>
-            <input
-              id="priceNaira"
-              name="priceNaira"
-              type="number"
-              min="0"
-              step="0.01"
-              defaultValue={category.defaultPriceMinor / 100}
-              required
-            />
           </div>
           <ApartmentStayDates checkInDate={category.checkInDate} checkOutDate={category.checkOutDate} />
           <button className="btn" type="submit">
@@ -105,7 +96,7 @@ export default async function ApartmentDetailPage({
         </form>
       </div>
 
-      <div className="card stack">
+      <div className="card stack apartment-customize-photos">
         <h2>Photos</h2>
         {unit.images.length > 0 && (
           <div className="grid">
@@ -145,7 +136,7 @@ export default async function ApartmentDetailPage({
         </div>
       )}
 
-      <div className="card stack">
+      <div className="card stack apartment-customize-beds">
         <h2>Beds</h2>
         <form method="post" action={`/api/admin/apartments/${unit.id}`} className="stack">
           <input type="hidden" name="intent" value="beds" />
@@ -176,12 +167,13 @@ export default async function ApartmentDetailPage({
       </div>
 
       {category.mode === "SHARED" && detail.rooms.length > 0 && (
-        <div className="card stack">
+        <div className="card stack apartment-customize-rooms">
           <h2>Rooms &amp; bedspaces</h2>
           <p className="listing-meta">
             {detail.rooms.length} room{detail.rooms.length === 1 ? "" : "s"} · {detail.rooms.reduce((n, r) => n + r.bedspaceList.length, 0)} bedspaces total
           </p>
 
+          <div className="admin-bedspace-scroll">
           {detail.rooms.map((r) => (
             <div key={r.room.id} className="stack" style={{ borderTop: "1px solid var(--color-line)", paddingTop: "var(--space-3)" }}>
               <h3 style={{ margin: 0 }}>{r.room.name}</h3>
@@ -212,6 +204,7 @@ export default async function ApartmentDetailPage({
               </form>
             </div>
           ))}
+          </div>
 
           <form method="post" action={`/api/admin/apartments/${unit.id}`} style={{ display: "flex", gap: "8px", alignItems: "flex-end", borderTop: "1px solid var(--color-line)", paddingTop: "var(--space-3)" }}>
             <input type="hidden" name="intent" value="add-room" />

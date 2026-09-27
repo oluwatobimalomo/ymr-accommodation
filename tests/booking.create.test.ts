@@ -82,7 +82,7 @@ describe("createBooking: customer-selected bedspace (SHARED)", () => {
       occupants: [occupant("John Doe", beds[0]!.id), occupant("James Smith", beds[1]!.id)],
     });
 
-    expect(result.reference).toMatch(/^T-ACM-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/);
+    expect(result.reference).toMatch(/^T-LX-\d{6}[A-Z]{2}$/);
     expect(result.amountMinor).toBe(1_000_000); // 2 occupants x 500000
 
     const occRows = await testDb.select().from(bookingOccupants).where(eq(bookingOccupants.bookingId, result.bookingId));

@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   const backTo = `/booking/${categoryId}`;
 
   if (!process.env.PAYSTACK_SECRET_KEY) {
-    return NextResponse.redirect(new URL(`${backTo}?error=${encodeURIComponent("Online payment is temporarily unavailable. Please try again later.")}`, request.url), 303);
+    return NextResponse.redirect(new URL(`${backTo}?error=${encodeURIComponent("We couldn't start your payment. Please try again shortly or contact support.")}`, request.url), 303);
   }
 
   if (!categoryId || occupantCount < 1) {

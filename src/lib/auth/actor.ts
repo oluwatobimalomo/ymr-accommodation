@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
-import { rolePermissions, roles, userRoles, users } from "@/db/schema";
+import { rolePermissions, roles, userLodgeAssignments, userRoles, users } from "@/db/schema";
 import { computeGrants, type Actor } from "@/lib/authz/authorize";
 import { ALL_PERMISSIONS, type Permission } from "@/lib/authz/permissions";
 
@@ -46,13 +46,14 @@ export async function loadActor(userId: string): Promise<Actor | null> {
     })),
   );
 
+  const assignments = await db.select({ lodgeId: userLodgeAssignments.lodgeId }).from(userLodgeAssignments).where(eq(userLodgeAssignments.userId, user.id));
+
   return {
     userId: user.id,
     email: user.email,
     name: user.name,
     roleKeys: userRoleRows.map((r) => r.key),
     ...grants,
-    // Phase 2 adds user_lodge_assignments. Until then scoped roles match no lodge (fail closed).
-    lodgeIds: new Set<string>(),
+    lodgeIds: new Set(assignments.map((assignment) => assignment.lodgeId)),
   };
 }

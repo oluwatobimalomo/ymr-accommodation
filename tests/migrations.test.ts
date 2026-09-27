@@ -24,7 +24,7 @@ describe("migrations", () => {
       "select table_name from information_schema.tables where table_schema='public'",
     );
     const names = res.rows.map((r) => r.table_name);
-    for (const t of ["events", "users", "roles", "permissions", "role_permissions", "user_roles", "sessions", "audit_logs"]) {
+    for (const t of ["events", "users", "roles", "permissions", "role_permissions", "user_roles", "user_lodge_assignments", "staff_access_requests", "sessions", "audit_logs"]) {
       expect(names).toContain(t);
     }
   });

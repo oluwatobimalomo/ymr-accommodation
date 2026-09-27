@@ -2,6 +2,8 @@ ALTER TABLE accommodation_units
   ADD COLUMN bed_types text[] NOT NULL DEFAULT '{}',
   ADD COLUMN bed_sizes text[] NOT NULL DEFAULT '{}';
 
+--> statement-breakpoint
+
 UPDATE accommodation_units
 SET bed_types = ARRAY(
       SELECT DISTINCT CASE
@@ -18,6 +20,8 @@ SET bed_types = ARRAY(
       WHERE lower(spec) ~ '[0-9]+[x×][0-9]+'
     );
 
+--> statement-breakpoint
+
 CREATE TABLE unit_overview_facilities (
   unit_id uuid NOT NULL REFERENCES accommodation_units(id) ON DELETE CASCADE,
   facility_id uuid NOT NULL REFERENCES facilities(id) ON DELETE RESTRICT,
@@ -26,6 +30,8 @@ CREATE TABLE unit_overview_facilities (
 
 -- Keep a useful overview on existing apartments. Staff can tailor it from the
 -- apartment editor after migration; only the first three sorted amenities show.
+--> statement-breakpoint
+
 INSERT INTO unit_overview_facilities (unit_id, facility_id)
 SELECT unit_id, facility_id
 FROM (

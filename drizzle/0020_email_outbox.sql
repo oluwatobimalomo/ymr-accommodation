@@ -13,5 +13,11 @@ CREATE TABLE "email_outbox" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "email_outbox_status_check" CHECK ("status" IN ('PENDING', 'SENDING', 'SENT', 'FAILED'))
 );
+
+--> statement-breakpoint
+
 CREATE UNIQUE INDEX "email_outbox_dedupe_key_uq" ON "email_outbox" USING btree ("dedupe_key");
+
+--> statement-breakpoint
+
 CREATE INDEX "email_outbox_pending_idx" ON "email_outbox" USING btree ("status", "next_attempt_at");

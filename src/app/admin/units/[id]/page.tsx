@@ -20,6 +20,7 @@ export default async function UnitDetailPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const actor = await requireActor();
+  if (!can(actor, "inventory.read")) notFound();
   const { id } = await params;
   const { error } = await searchParams;
   const unit = await getUnit(id);

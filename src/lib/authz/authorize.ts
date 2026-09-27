@@ -44,6 +44,13 @@ export function authorize(actor: Actor, permission: Permission, resource?: Resou
   if (!can(actor, permission, resource)) throw new ForbiddenError(permission);
 }
 
+/** Authorize list access when a scoped role is assigned at least one lodge; each result must still be query-filtered to that actor's lodgeIds. */
+export function authorizeAnyAssignedLodge(actor: Actor, permission: Permission): void {
+  if (actor.globalPermissions.has(permission)) return;
+  const lodgeId = actor.lodgeIds.values().next().value;
+  authorize(actor, permission, { lodgeId });
+}
+
 interface GrantSource {
   lodgeScoped: boolean;
   permissions: readonly Permission[];

@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { supportTicketMessages, supportTickets } from "@/db/schema";
+import { events, lodges, supportTicketMessages, supportTickets } from "@/db/schema";
 import { computeGrants } from "@/lib/authz/authorize";
 import { ROLE_DEFINITIONS } from "@/lib/authz/roles";
 
@@ -11,7 +11,7 @@ let client: PGlite;
 let testDb: ReturnType<typeof drizzle>;
 vi.mock("@/db/client", () => ({ getDb: () => testDb }));
 
-const { createTicket, listTickets, getTicket, replyToTicket, setTicketStatus } = await import("@/lib/support/tickets");
+  const { createTicket, listTickets, getTicket, replyToTicket, setTicketStatus } = await import("@/lib/support/tickets");
 
 beforeAll(async () => {
   client = new PGlite();
@@ -37,6 +37,7 @@ describe("support tickets", () => {
     const ticket = await createTicket({
       customerName: "Jane Doe",
       customerEmail: "jane@example.com",
+      customerPhone: "+2348000000000",
       category: "PAYMENT",
       subject: "Payment not reflecting",
       description: "I paid but my booking still shows pending.",
@@ -51,7 +52,7 @@ describe("support tickets", () => {
 
   it("rejects an empty description", async () => {
     await expect(
-      createTicket({ customerName: "X", customerEmail: "x@x.com", category: "GENERAL", subject: "Hi", description: "" }),
+      createTicket({ customerName: "X", customerEmail: "x@x.com", customerPhone: "+2348000000000", category: "GENERAL", subject: "Hi", description: "" }),
     ).rejects.toThrow(/describe/);
   });
 
@@ -59,6 +60,7 @@ describe("support tickets", () => {
     const ticket = await createTicket({
       customerName: "Bob",
       customerEmail: "bob@example.com",
+      customerPhone: "+2348000000000",
       category: "GENERAL",
       subject: "Question",
       description: "General question.",
@@ -83,11 +85,28 @@ describe("support tickets", () => {
     const ticket = await createTicket({
       customerName: "C",
       customerEmail: "c@c.com",
+      customerPhone: "+2348000000000",
       category: "GENERAL",
       subject: "S",
       description: "D",
     });
-    const officer = actorFor("accommodation_officer"); // has support.create only, not manage/read per the Phase 1 role matrix
+    const officer = actorFor("accommodation_officer"); // scoped role with no assigned lodge in this test
     await expect(replyToTicket(officer, ticket.id, "reply")).rejects.toThrow(/permission/);
+  });
+
+  it("limits Lodge Coordinator support access to assigned lodges", async () => {
+    const [event] = await testDb.insert(events).values({ name: "Support test", slug: "support-test", year: 2026, bookingRefPrefix: "TST" }).returning();
+    const [assigned] = await testDb.insert(lodges).values({ eventId: event!.id, name: "Assigned lodge", slug: "assigned-lodge" }).returning();
+    const [unassigned] = await testDb.insert(lodges).values({ eventId: event!.id, name: "Other lodge", slug: "other-lodge" }).returning();
+    const ticketForAssigned = await createTicket({ lodgeId: assigned!.id, customerName: "A", customerEmail: "a@a.test", customerPhone: "1", category: "ACCOMMODATION", subject: "Assigned", description: "Assigned lodge request" });
+    const ticketForOther = await createTicket({ lodgeId: unassigned!.id, customerName: "B", customerEmail: "b@b.test", customerPhone: "2", category: "ACCOMMODATION", subject: "Other", description: "Other lodge request" });
+    const coordinator = { ...actorFor("accommodation_officer"), lodgeIds: new Set([assigned!.id]) };
+
+    const tickets = await listTickets(coordinator);
+    expect(tickets.map((ticket) => ticket.id)).toContain(ticketForAssigned.id);
+    expect(tickets.map((ticket) => ticket.id)).not.toContain(ticketForOther.id);
+    expect((await getTicket(coordinator, ticketForAssigned.id))?.ticket.id).toBe(ticketForAssigned.id);
+    await expect(getTicket(coordinator, ticketForOther.id)).rejects.toThrow(/permission/);
+    await expect(replyToTicket(coordinator, ticketForOther.id, "out of scope")).rejects.toThrow(/permission/);
   });
 });

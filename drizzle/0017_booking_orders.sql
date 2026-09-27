@@ -12,11 +12,20 @@ CREATE TABLE booking_orders (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+--> statement-breakpoint
+
 ALTER TABLE bookings
   ADD COLUMN checkout_order_id uuid REFERENCES booking_orders(id) ON DELETE RESTRICT;
+
+--> statement-breakpoint
 
 ALTER TABLE payment_transactions
   ADD COLUMN checkout_order_id uuid REFERENCES booking_orders(id) ON DELETE RESTRICT;
 
+--> statement-breakpoint
+
 CREATE INDEX bookings_checkout_order_idx ON bookings(checkout_order_id);
+
+--> statement-breakpoint
+
 CREATE INDEX payment_transactions_checkout_order_idx ON payment_transactions(checkout_order_id);

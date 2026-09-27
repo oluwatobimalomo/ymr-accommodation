@@ -62,7 +62,9 @@ describe("createApartment: PRIVATE", () => {
     expect(unit!.name).toBe("Chalet A");
 
     const detail = await getApartmentDetail(result.unitId);
-    expect(detail!.facilityIds).toEqual([fan!.id]);
+    const [bedFacility] = await testDb.select().from(facilities).where(eq(facilities.name, "Bed"));
+    expect(detail!.facilityIds).toEqual(expect.arrayContaining([fan!.id, bedFacility!.id]));
+    expect(detail!.facilityIds).toHaveLength(2);
     expect(detail!.rooms).toHaveLength(0);
   });
 
@@ -170,7 +172,9 @@ describe("updateApartment", () => {
     expect(category!.defaultPriceMinor).toBe(2000000);
 
     const detail = await getApartmentDetail(result.unitId);
-    expect(detail!.facilityIds).toEqual([fan!.id]);
+    const [bedFacility] = await testDb.select().from(facilities).where(eq(facilities.name, "Bed"));
+    expect(detail!.facilityIds).toEqual(expect.arrayContaining([fan!.id, bedFacility!.id]));
+    expect(detail!.facilityIds).toHaveLength(2);
   });
 });
 

@@ -2,6 +2,8 @@ INSERT INTO facilities (name, sort_order)
 VALUES ('Air Conditioner', 0)
 ON CONFLICT (name) DO NOTHING;
 
+--> statement-breakpoint
+
 INSERT INTO unit_facilities (unit_id, facility_id)
 SELECT old_link.unit_id, canonical.id
 FROM unit_facilities AS old_link
@@ -10,7 +12,11 @@ JOIN facilities AS canonical ON canonical.name = 'Air Conditioner'
 WHERE lower(duplicate.name) = 'air conditioning'
 ON CONFLICT (unit_id, facility_id) DO NOTHING;
 
+--> statement-breakpoint
+
 DELETE FROM unit_facilities
 WHERE facility_id IN (SELECT id FROM facilities WHERE lower(name) = 'air conditioning');
+
+--> statement-breakpoint
 
 DELETE FROM facilities WHERE lower(name) = 'air conditioning';

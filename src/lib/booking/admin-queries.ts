@@ -1,17 +1,26 @@
-import { and, count, desc, eq, gte, isNull, lte, ne, sql, sum } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNull, lte, ne, sql, sum } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { accommodationCategories, bookingOccupants, bookingOrders, bookings, inventoryHolds, keyCustody, lodges, paymentTransactions, privateUnitAllocations } from "@/db/schema";
 import { recordAudit } from "@/lib/audit";
-import { authorize, type Actor } from "@/lib/authz/authorize";
+import { authorize, authorizeAnyAssignedLodge, type Actor } from "@/lib/authz/authorize";
 
-export interface BookingListFilters { status?: string; lodgeId?: string; from?: string; to?: string; page?: string }
+export interface BookingListFilters { status?: string; lodgeId?: string; from?: string; to?: string; page?: string; all?: boolean }
 
 export async function getBookingsDashboard(actor: Actor, filters: BookingListFilters = {}) {
-  authorize(actor, "booking.read");
+  authorizeAnyAssignedLodge(actor, "booking.read");
   const db = getDb();
   const where = [];
-  if (["PENDING", "PAID", "FAILED", "REFUNDED", "CANCELLED"].includes(filters.status ?? "")) where.push(eq(bookings.paymentStatus, filters.status as never));
-  if (filters.lodgeId) where.push(eq(lodges.id, filters.lodgeId));
+  const permittedLodges = [...actor.lodgeIds];
+  const globallyScoped = actor.globalPermissions.has("booking.read");
+  const canSeeFinancials = actor.globalPermissions.has("payment.read") || actor.scopedPermissions.has("payment.read");
+  if (!globallyScoped) {
+    if (!permittedLodges.length || (filters.lodgeId && !permittedLodges.includes(filters.lodgeId))) {
+      return { rows: [], totals: { count: 0, amountMinor: 0, paid: 0, pending: 0 }, transactionCount: 0, page: 1, limit: 100 };
+    }
+    where.push(inArray(lodges.id, permittedLodges));
+  }
+  if (canSeeFinancials && ["PENDING", "PAID", "FAILED", "REFUNDED", "CANCELLED"].includes(filters.status ?? "")) where.push(eq(bookings.paymentStatus, filters.status as never));
+  if (filters.lodgeId && globallyScoped) where.push(eq(lodges.id, filters.lodgeId));
   if (filters.from && !Number.isNaN(Date.parse(filters.from))) where.push(gte(bookings.createdAt, new Date(`${filters.from}T00:00:00`)));
   if (filters.to && !Number.isNaN(Date.parse(filters.to))) where.push(lte(bookings.createdAt, new Date(`${filters.to}T23:59:59.999`)));
   const condition = where.length ? and(...where) : undefined;
@@ -22,6 +31,8 @@ export async function getBookingsDashboard(actor: Actor, filters: BookingListFil
       id: bookings.id,
       reference: bookings.reference,
       bookerName: bookings.bookerName,
+      bookerPhone: bookings.bookerPhone,
+      bookerEmail: bookings.bookerEmail,
       paymentStatus: bookings.paymentStatus,
       accommodationStatus: bookings.accommodationStatus,
       amountMinor: bookings.amountMinor,
@@ -34,18 +45,22 @@ export async function getBookingsDashboard(actor: Actor, filters: BookingListFil
     .innerJoin(accommodationCategories, eq(accommodationCategories.id, bookings.categoryId))
     .innerJoin(lodges, eq(lodges.id, accommodationCategories.lodgeId));
   const [rows, totals, transactions] = await Promise.all([
-    base.where(condition).orderBy(desc(bookings.createdAt)).limit(limit).offset((page - 1) * limit),
+    base.where(condition).orderBy(desc(bookings.createdAt)).limit(filters.all ? 10000 : limit).offset(filters.all ? 0 : (page - 1) * limit),
     db.select({ count: count(), amountMinor: sum(sql`case when ${bookings.paymentStatus} = 'PAID' then ${bookings.amountMinor} else 0 end`).mapWith(Number), paid: sql<number>`count(*) filter (where ${bookings.paymentStatus} = 'PAID')`.mapWith(Number), pending: sql<number>`count(*) filter (where ${bookings.paymentStatus} = 'PENDING')`.mapWith(Number) }).from(bookings).innerJoin(accommodationCategories, eq(accommodationCategories.id, bookings.categoryId)).innerJoin(lodges, eq(lodges.id, accommodationCategories.lodgeId)).where(condition),
     db.select({ count: count() }).from(paymentTransactions).innerJoin(bookings, eq(bookings.id, paymentTransactions.bookingId)).innerJoin(accommodationCategories, eq(accommodationCategories.id, bookings.categoryId)).innerJoin(lodges, eq(lodges.id, accommodationCategories.lodgeId)).where(condition),
   ]);
-  return { rows, totals: totals[0] ?? { count: 0, amountMinor: 0, paid: 0, pending: 0 }, transactionCount: transactions[0]?.count ?? 0, page, limit };
+  const safeTotals = totals[0] ?? { count: 0, amountMinor: 0, paid: 0, pending: 0 };
+  return { rows, totals: canSeeFinancials ? safeTotals : { ...safeTotals, amountMinor: 0, paid: 0, pending: 0 }, transactionCount: canSeeFinancials ? transactions[0]?.count ?? 0 : 0, page, limit };
 }
 
 export async function getBookingDetail(actor: Actor, bookingId: string) {
-  authorize(actor, "booking.read");
+  authorizeAnyAssignedLodge(actor, "booking.read");
   const db = getDb();
-  const [booking] = await db.select().from(bookings).where(eq(bookings.id, bookingId)).limit(1);
-  if (!booking) return null;
+  const [bookingScope] = await db.select({ booking: bookings, lodgeId: accommodationCategories.lodgeId }).from(bookings)
+    .innerJoin(accommodationCategories, eq(accommodationCategories.id, bookings.categoryId)).where(eq(bookings.id, bookingId)).limit(1);
+  if (!bookingScope) return null;
+  authorize(actor, "booking.read", { lodgeId: bookingScope.lodgeId });
+  const booking = bookingScope.booking;
   const occupants = await db.select().from(bookingOccupants).where(eq(bookingOccupants.bookingId, bookingId));
   const [category] = await db
     .select()
@@ -54,14 +69,17 @@ export async function getBookingDetail(actor: Actor, bookingId: string) {
     .limit(1);
   const [checkoutResult, keyRecords] = await Promise.all([booking.checkoutOrderId ? Promise.all([
     db.select().from(bookingOrders).where(eq(bookingOrders.id, booking.checkoutOrderId)).limit(1).then((rows) => rows[0] ?? null),
-    db.select({ id: bookings.id, reference: bookings.reference, amountMinor: bookings.amountMinor, paymentStatus: bookings.paymentStatus, accommodationStatus: bookings.accommodationStatus, categoryName: accommodationCategories.name, lodgeName: lodges.name })
+    db.select({ id: bookings.id, reference: bookings.reference, amountMinor: bookings.amountMinor, paymentStatus: bookings.paymentStatus, accommodationStatus: bookings.accommodationStatus, categoryName: accommodationCategories.name, lodgeId: lodges.id, lodgeName: lodges.name })
       .from(bookings).innerJoin(accommodationCategories, eq(accommodationCategories.id, bookings.categoryId)).innerJoin(lodges, eq(lodges.id, accommodationCategories.lodgeId))
       .where(eq(bookings.checkoutOrderId, booking.checkoutOrderId)),
-  ] as const) : Promise.resolve([null, [] as Array<{ id: string; reference: string; amountMinor: number; paymentStatus: typeof booking.paymentStatus; accommodationStatus: typeof booking.accommodationStatus; categoryName: string; lodgeName: string }>] as const),
+  ] as const) : Promise.resolve([null, [] as Array<{ id: string; reference: string; amountMinor: number; paymentStatus: typeof booking.paymentStatus; accommodationStatus: typeof booking.accommodationStatus; categoryName: string; lodgeId: string; lodgeName: string }>] as const),
     db.select().from(keyCustody).where(eq(keyCustody.bookingId, bookingId)).orderBy(desc(keyCustody.issuedAt)),
   ]);
   const [checkoutOrder, checkoutItems] = checkoutResult;
-  return { booking, occupants, category, checkoutOrder, checkoutItems, keyRecords };
+  const visibleCheckoutItems = actor.globalPermissions.has("booking.read")
+    ? checkoutItems
+    : checkoutItems.filter((item) => actor.lodgeIds.has(item.lodgeId));
+  return { booking, occupants, category, checkoutOrder, checkoutItems: visibleCheckoutItems, keyRecords };
 }
 
 export async function checkInBooking(actor: Actor, bookingId: string, overrideReason = "") {

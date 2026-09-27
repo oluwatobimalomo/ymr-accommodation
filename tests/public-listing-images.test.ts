@@ -8,7 +8,7 @@ let client: PGlite;
 let testDb: ReturnType<typeof drizzle>;
 vi.mock("@/db/client", () => ({ getDb: () => testDb }));
 
-const { listActiveCategoriesForLodge } = await import("@/lib/booking/queries");
+const { listActiveCategoriesForLodge, listActiveLodges, getLodgeBySlug } = await import("@/lib/booking/queries");
 const { createLodge } = await import("@/lib/inventory/lodges");
 const { createApartment } = await import("@/lib/inventory/apartments");
 const { computeGrants } = await import("@/lib/authz/authorize");
@@ -33,7 +33,7 @@ beforeAll(async () => {
   await migrate(testDb, { migrationsFolder: "./drizzle" });
   const [event] = await testDb
     .insert(events)
-    .values({ name: "T", slug: "public-listing-test", year: 2026, bookingRefPrefix: "T-ACM" })
+    .values({ name: "T", slug: "public-listing-test", year: 2026, bookingRefPrefix: "T-ACM", status: "OPEN" })
     .returning();
   eventId = event!.id;
 });
@@ -68,5 +68,15 @@ describe("listActiveCategoriesForLodge", () => {
     expect(female!.image).toBe("data:image/png;base64,AAAA");
     expect(male!.image).toBeUndefined(); // no fake shared placeholder value
     expect(female!.image).not.toBe(male!.image); // the original bug: both showed the same thing
+  });
+
+  it("does not publish lodge listings while the linked event is not open", async () => {
+    const lodge = await createLodge(admin, { eventId, name: "Draft event lodge", slug: "draft-event-lodge" });
+    const [draftEvent] = await testDb.insert(events).values({ name: "Draft", slug: "draft-listing-event", year: 2027, bookingRefPrefix: "DRAFT" }).returning();
+    const draftLodge = await createLodge(admin, { eventId: draftEvent!.id, name: "Draft lodge", slug: "draft-event-public-lodge" });
+
+    expect((await listActiveLodges()).map((item) => item.id)).toContain(lodge.id);
+    expect((await listActiveLodges()).map((item) => item.id)).not.toContain(draftLodge.id);
+    expect(await getLodgeBySlug("draft-event-public-lodge")).toBeNull();
   });
 });

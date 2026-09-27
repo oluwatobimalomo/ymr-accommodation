@@ -20,6 +20,7 @@ export default async function LodgeDetailPage({
   searchParams: Promise<{ error?: string; q?: string; sort?: string; success?: string }>;
 }) {
   const actor = await requireActor();
+  if (!can(actor, "inventory.read")) notFound();
   const { id } = await params;
   const { error, q, sort, success } = await searchParams;
   const lodge = await getLodge(id);
@@ -49,6 +50,7 @@ export default async function LodgeDetailPage({
               <div className="badge-row">
                 <Badge>{a.mode === "PRIVATE" ? "Private" : "Shared"}</Badge>
                 {a.genderRestriction !== "ANY" && <Badge>{a.genderRestriction === "MALE" ? "Male" : "Female"}</Badge>}
+                {a.listingStatus !== "ACTIVE" && <Badge>Archived · hidden from booking</Badge>}
               </div>
               <p className="listing-meta">{a.mode === "PRIVATE" ? (/chalet/i.test(a.name) ? "Chalet" : /single\s*room|room/i.test(a.name) ? "Single Room" : "Private apartment") : "Shared accommodation"}</p>
               {a.overviewFacilities.length > 0 && <p className="listing-meta"><strong>Some amenities:</strong> {a.overviewFacilities.map((name) => name.replace(/\bac\b/gi, "Air Conditioner")).join(", ")}</p>}
@@ -64,29 +66,28 @@ export default async function LodgeDetailPage({
   }
 
   return (
-    <div className="stack">
+    <div className="stack lodge-detail-workspace">
+      <div className="stack lodge-detail-fixed">
       <p>
         <Link href="/admin/lodges">&larr; All lodges</Link>
       </p>
-      <h1>{lodge.name}</h1>
       <ErrorBanner error={error} />
       {success === "apartment-created" && <p className="alert success" role="status">Apartment saved. It is now included in this lodge’s apartment list.</p>}
       <section className="card lodge-overview stack">
         <div className="admin-page-heading">
-          <div><span className="eyebrow">Lodge details</span><h2>{lodge.status === "ACTIVE" ? "Active property" : "Inactive property"}</h2><p>{lodge.address || "No address added yet."}</p></div>
+          <div className="lodge-overview-copy"><span className="eyebrow">{lodge.status === "ACTIVE" ? "Active property" : "Archived property"}</span><h2>{lodge.name}</h2><p><strong>Address:</strong> {lodge.address || "Not provided"}</p><p><strong>Distance to Old Auditorium:</strong> {lodge.proximityKm ? `${lodge.proximityKm} km` : "Not provided"}</p></div>
           <div className="lodge-actions">
             {canWrite && <Link className="btn secondary" href={`/admin/lodges/${lodge.id}/edit`}>Edit Lodge Details</Link>}
             {canWrite && <Link className="btn" href={`/admin/lodges/${lodge.id}/apartments/new`}>Add an Apartment</Link>}
+            {canWrite && <form method="post" action={`/api/admin/lodges/${lodge.id}`}><input type="hidden" name="intent" value="status"/><input type="hidden" name="status" value={lodge.status === "ACTIVE" ? "INACTIVE" : "ACTIVE"}/><button className="btn secondary" type="submit">{lodge.status === "ACTIVE" ? "Archive lodge" : "Restore lodge"}</button></form>}
           </div>
         </div>
-        <div className="lodge-contact-summary">
-          <span><strong>Coordinator</strong>{lodge.contactName || "Not provided"}</span>
-          <span><strong>Phone</strong>{lodge.contactPhone || "Not provided"}</span>
-          <span><strong>Distance to Old Auditorium</strong>{lodge.proximityKm ? `${lodge.proximityKm} km` : "Not provided"}</span>
-        </div>
+        <p className="lodge-contact-summary"><strong>Coordinator:</strong> {lodge.contactName || "Not provided"} <span aria-hidden="true">|</span> <strong>Phone Number:</strong> {lodge.contactPhone || "Not provided"}</p>
         {lodge.images.length > 0 && <div className="lodge-photo-strip">{lodge.images.map((src, i) => <ImageThumb key={i} src={src} alt={`${lodge.name} photo ${i + 1}`} aspect="16/10" />)}</div>}
       </section>
 
+      </div>
+      <section className="stack lodge-apartments-panel">
       <div className="admin-page-heading apartment-list-heading">
         <div><span className="eyebrow">Accommodation inventory</span><h2>Apartments</h2><p>Search and sort this lodge’s private and shared listings.</p></div>
       </div>
@@ -106,7 +107,7 @@ export default async function LodgeDetailPage({
           {sharedApartments.length > 0 && <section className="stack"><h3>Shared apartments</h3><ApartmentCards items={sharedApartments} /></section>}
         </div>
       )}
-
+      </section>
     </div>
   );
 }

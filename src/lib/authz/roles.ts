@@ -4,6 +4,7 @@ export type RoleKey =
   | "super_admin"
   | "accommodation_admin"
   | "accommodation_officer"
+  | "accommodation_overseer"
   | "support_agent";
 
 export interface RoleDefinition {
@@ -58,18 +59,38 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
   },
   {
     key: "accommodation_officer",
-    name: "Accommodation Officer",
-    description: "Check-in/out, room occupants and key custody for assigned lodges only.",
+    name: "Lodge Coordinator",
+    description: "Operational guest, booking and support access for assigned lodges only. No financial data.",
     lodgeScoped: true,
     permissions: [
-      "inventory.read",
       "booking.read",
+      "booking.reallocate",
       "checkin.perform",
       "checkout.perform",
       "keys.read",
       "keys.issue",
       "keys.return",
       "support.create",
+      "support.read",
+      "support.manage",
+    ],
+  },
+  {
+    key: "accommodation_overseer",
+    name: "Accommodation Overseer",
+    description: "Operational guest, booking and support access across all lodges. No financial data.",
+    lodgeScoped: false,
+    permissions: [
+      "booking.read",
+      "booking.reallocate",
+      "checkin.perform",
+      "checkout.perform",
+      "keys.read",
+      "keys.issue",
+      "keys.return",
+      "support.create",
+      "support.read",
+      "support.manage",
     ],
   },
   {

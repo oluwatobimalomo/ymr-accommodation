@@ -5,6 +5,14 @@ export function formatDateOnly(value: string | null | undefined, options: Intl.D
   return new Intl.DateTimeFormat("en-NG", { ...options, timeZone: "UTC" }).format(date);
 }
 
+/** Formats an absolute timestamp consistently in the application's local time zone. */
+export function formatDateTime(value: Date | string | null | undefined, options: Intl.DateTimeFormatOptions = { dateStyle: "medium", timeStyle: "short" }) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-NG", { ...options, timeZone: "Africa/Lagos" }).format(date);
+}
+
 export function formatStayRange(checkIn: string | null | undefined, checkOut: string | null | undefined): string | null {
   if (!checkIn || !checkOut) return null;
   const start = new Date(`${checkIn.slice(0, 10)}T00:00:00.000Z`);

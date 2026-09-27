@@ -1,7 +1,7 @@
-import { and, desc, eq, getTableColumns, gte, lte, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, gte, inArray, lte, sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { accommodationCategories, bookings, lodges, supportTicketMessages, supportTickets } from "@/db/schema";
-import { authorize, type Actor } from "@/lib/authz/authorize";
+import { authorize, authorizeAnyAssignedLodge, type Actor } from "@/lib/authz/authorize";
 
 async function nextTicketReference(): Promise<string> {
   // Simple, readable ticket reference. Collisions are astronomically
@@ -16,7 +16,7 @@ export interface CreateTicketInput {
   lodgeId?: string;
   customerName: string;
   customerEmail: string;
-  customerPhone?: string;
+  customerPhone: string;
   contactPreference?: "CALL" | "WHATSAPP";
   category: "PAYMENT" | "BOOKING" | "ACCOMMODATION" | "ALLOCATION" | "CHECK_IN" | "KEY" | "REFUND" | "GENERAL";
   subject: string;
@@ -44,7 +44,7 @@ export async function createTicket(input: CreateTicketInput) {
         lodgeId: input.lodgeId ?? null,
         customerName: input.customerName,
         customerEmail: input.customerEmail,
-        customerPhone: input.customerPhone ?? "",
+        customerPhone: input.customerPhone,
         contactPreference,
         category: input.category,
         subject: input.subject,
@@ -73,15 +73,21 @@ export interface TicketFilters {
 }
 
 export async function listTickets(actor: Actor, filters: TicketFilters = {}) {
-  authorize(actor, "support.read");
+  authorizeAnyAssignedLodge(actor, "support.read");
   const db = getDb();
   const where = [];
+  const globalAccess = actor.globalPermissions.has("support.read");
+  const assignedLodges = [...actor.lodgeIds];
+  if (!globalAccess) {
+    if (!assignedLodges.length || (filters.lodgeId && !assignedLodges.includes(filters.lodgeId))) return [];
+    where.push(inArray(sql<string>`coalesce(${supportTickets.lodgeId}, ${accommodationCategories.lodgeId})`, assignedLodges));
+  }
   if (["OPEN", "IN_PROGRESS", "WAITING_FOR_CUSTOMER", "ESCALATED", "RESOLVED", "CLOSED"].includes(filters.status ?? "")) where.push(eq(supportTickets.status, filters.status as never));
   if (["PAYMENT", "BOOKING", "ACCOMMODATION", "ALLOCATION", "CHECK_IN", "KEY", "REFUND", "GENERAL"].includes(filters.category ?? "")) where.push(eq(supportTickets.category, filters.category as never));
   if (["CALL", "WHATSAPP"].includes(filters.preference ?? "")) where.push(eq(supportTickets.contactPreference, filters.preference!));
   if (filters.from && !Number.isNaN(Date.parse(filters.from))) where.push(gte(supportTickets.createdAt, new Date(`${filters.from}T00:00:00`)));
   if (filters.to && !Number.isNaN(Date.parse(filters.to))) where.push(lte(supportTickets.createdAt, new Date(`${filters.to}T23:59:59.999`)));
-  if (filters.lodgeId) where.push(eq(lodges.id, filters.lodgeId));
+  if (filters.lodgeId && globalAccess) where.push(eq(lodges.id, filters.lodgeId));
   return db
     .select({ ...getTableColumns(supportTickets), lodgeName: lodges.name, lodgeContactName: lodges.contactName, lodgeContactPhone: lodges.contactPhone })
     .from(supportTickets)
@@ -94,16 +100,17 @@ export async function listTickets(actor: Actor, filters: TicketFilters = {}) {
 }
 
 export async function getTicket(actor: Actor, ticketId: string) {
-  authorize(actor, "support.read");
+  authorizeAnyAssignedLodge(actor, "support.read");
   const db = getDb();
-  const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
-  if (!ticket) return null;
-  const lodgeRows = ticket.lodgeId
-    ? await db.select({ name: lodges.name, contactName: lodges.contactName, contactPhone: lodges.contactPhone }).from(lodges).where(eq(lodges.id, ticket.lodgeId)).limit(1)
-    : ticket.bookingId
-      ? await db.select({ name: lodges.name, contactName: lodges.contactName, contactPhone: lodges.contactPhone }).from(bookings).innerJoin(accommodationCategories, eq(accommodationCategories.id, bookings.categoryId)).innerJoin(lodges, eq(lodges.id, accommodationCategories.lodgeId)).where(eq(bookings.id, ticket.bookingId)).limit(1)
-      : [];
-  const lodge = lodgeRows[0];
+  const [row] = await db.select({ ticket: supportTickets, lodgeId: sql<string | null>`coalesce(${supportTickets.lodgeId}, ${accommodationCategories.lodgeId})`, lodgeName: lodges.name, contactName: lodges.contactName, contactPhone: lodges.contactPhone })
+    .from(supportTickets).leftJoin(bookings, eq(bookings.id, supportTickets.bookingId))
+    .leftJoin(accommodationCategories, eq(accommodationCategories.id, bookings.categoryId))
+    .leftJoin(lodges, eq(lodges.id, sql`coalesce(${supportTickets.lodgeId}, ${accommodationCategories.lodgeId})`))
+    .where(eq(supportTickets.id, ticketId)).limit(1);
+  if (!row) return null;
+  authorize(actor, "support.read", { lodgeId: row.lodgeId });
+  const ticket = row.ticket;
+  const lodge = row.lodgeId && row.lodgeName ? { name: row.lodgeName, contactName: row.contactName, contactPhone: row.contactPhone } : null;
   const messages = await db
     .select()
     .from(supportTicketMessages)
@@ -113,7 +120,7 @@ export async function getTicket(actor: Actor, ticketId: string) {
 }
 
 export async function replyToTicket(actor: Actor, ticketId: string, body: string) {
-  authorize(actor, "support.manage");
+  await authorizeTicket(actor, ticketId, "support.manage");
   if (!body.trim()) throw new Error("A reply cannot be empty.");
   const db = getDb();
   await db.insert(supportTicketMessages).values({ ticketId, authorLabel: actor.name, isStaff: true, body });
@@ -126,13 +133,15 @@ export async function setTicketStatus(
   status: "OPEN" | "IN_PROGRESS" | "WAITING_FOR_CUSTOMER" | "ESCALATED" | "RESOLVED" | "CLOSED",
   contactSummary = "",
 ) {
-  authorize(actor, "support.manage");
+  await authorizeTicket(actor, ticketId, "support.manage");
   if (!["OPEN", "IN_PROGRESS", "WAITING_FOR_CUSTOMER", "ESCALATED", "RESOLVED", "CLOSED"].includes(status)) throw new Error("Choose a valid support status.");
-  if (["RESOLVED", "CLOSED"].includes(status) && !contactSummary.trim()) {
-    throw new Error("Add a summary of your call or WhatsApp exchange before resolving or closing this ticket.");
-  }
   const db = getDb();
   await db.transaction(async (tx) => {
+    if (["RESOLVED", "CLOSED"].includes(status) && !contactSummary.trim()) {
+      const [existingContactNote] = await tx.select({ id: supportTicketMessages.id }).from(supportTicketMessages)
+        .where(and(eq(supportTicketMessages.ticketId, ticketId), eq(supportTicketMessages.isStaff, true))).limit(1);
+      if (!existingContactNote) throw new Error("Add a summary of your call or WhatsApp exchange before resolving or closing this ticket.");
+    }
     await tx.update(supportTickets).set({ status, updatedAt: new Date() }).where(eq(supportTickets.id, ticketId));
     if (contactSummary.trim()) {
       await tx.insert(supportTicketMessages).values({
@@ -146,19 +155,37 @@ export async function setTicketStatus(
 }
 
 export async function getLatestTicketNotification(actor: Actor) {
-  authorize(actor, "support.read");
+  authorizeAnyAssignedLodge(actor, "support.read");
+  const scope = actor.globalPermissions.has("support.read") ? undefined : [...actor.lodgeIds];
+  if (scope && !scope.length) return null;
   const [latest] = await getDb()
     .select({ id: supportTickets.id, reference: supportTickets.reference, createdAt: supportTickets.createdAt })
     .from(supportTickets)
+    .leftJoin(bookings, eq(bookings.id, supportTickets.bookingId))
+    .leftJoin(accommodationCategories, eq(accommodationCategories.id, bookings.categoryId))
     .orderBy(desc(supportTickets.createdAt))
+    .where(scope ? inArray(sql<string>`coalesce(${supportTickets.lodgeId}, ${accommodationCategories.lodgeId})`, scope) : undefined)
     .limit(1);
   return latest ?? null;
 }
 
-export async function countOpenTickets(): Promise<number> {
+async function authorizeTicket(actor: Actor, ticketId: string, permission: "support.manage") {
+  const [row] = await getDb().select({ lodgeId: sql<string | null>`coalesce(${supportTickets.lodgeId}, ${accommodationCategories.lodgeId})` })
+    .from(supportTickets).leftJoin(bookings, eq(bookings.id, supportTickets.bookingId))
+    .leftJoin(accommodationCategories, eq(accommodationCategories.id, bookings.categoryId))
+    .where(eq(supportTickets.id, ticketId)).limit(1);
+  if (!row) throw new Error("That support ticket could not be found.");
+  authorize(actor, permission, { lodgeId: row.lodgeId });
+}
+
+export async function countOpenTickets(actor: Actor): Promise<number> {
+  authorizeAnyAssignedLodge(actor, "support.read");
+  const assigned = actor.globalPermissions.has("support.read") ? null : [...actor.lodgeIds];
+  if (assigned && !assigned.length) return 0;
   const [row] = await getDb()
     .select({ count: sql<number>`count(*)`.mapWith(Number) })
-    .from(supportTickets)
-    .where(sql`${supportTickets.status} not in ('RESOLVED', 'CLOSED')`);
+    .from(supportTickets).leftJoin(bookings, eq(bookings.id, supportTickets.bookingId))
+    .leftJoin(accommodationCategories, eq(accommodationCategories.id, bookings.categoryId))
+    .where(and(sql`${supportTickets.status} not in ('RESOLVED', 'CLOSED')`, assigned ? inArray(sql<string>`coalesce(${supportTickets.lodgeId}, ${accommodationCategories.lodgeId})`, assigned) : undefined));
   return row!.count;
 }

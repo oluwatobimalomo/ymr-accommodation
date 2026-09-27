@@ -10,7 +10,7 @@ export default function PrivacyPage() {
     <article className="legal-page stack">
       <header className="legal-hero">
         <span className="eyebrow">YMR Accommodation · Guest information</span>
-        <h1>Privacy notice</h1>
+        <h3>Privacy notice</h3>
         <p>Here’s what information is used to arrange your accommodation and how it is handled.</p>
       </header>
       <div className="legal-layout">

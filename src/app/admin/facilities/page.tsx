@@ -2,12 +2,14 @@ import { ErrorBanner } from "@/components/AdminChrome";
 import { requireActor } from "@/lib/auth/require";
 import { can } from "@/lib/authz/authorize";
 import { listFacilities } from "@/lib/inventory/facilities";
+import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Facilities" };
 
 export default async function FacilitiesPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const actor = await requireActor();
+  if (!can(actor, "inventory.read")) notFound();
   const { error } = await searchParams;
   const facilities = await listFacilities();
   const canWrite = can(actor, "inventory.write");

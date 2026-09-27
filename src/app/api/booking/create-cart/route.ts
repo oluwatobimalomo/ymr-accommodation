@@ -10,7 +10,7 @@ export async function POST(request: Request) {
     // Do not create a pending hold when there is no payment path for the user
     // to complete. This used to leave reservations stuck in the bag flow.
     if (!process.env.PAYSTACK_SECRET_KEY) {
-      return NextResponse.json({ error: "Online payment is temporarily unavailable. Please try again later." }, { status: 503 });
+      return NextResponse.json({ error: "We couldn't start your payment. Please try again shortly or contact support." }, { status: 503 });
     }
     const body = await request.json() as Record<string, unknown>;
     const rawItems = Array.isArray(body.items) ? body.items : [];

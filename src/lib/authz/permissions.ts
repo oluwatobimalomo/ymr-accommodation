@@ -19,7 +19,7 @@ export const PERMISSIONS = {
 
   // Payments
   "payment.read": "View payment status and transactions",
-  "payment.reconcile": "Upload and resolve Paystack reconciliation",
+  "payment.reconcile": "Compare local payment records with Paystack transactions",
   "payment.refund_record": "Record a refund against a booking",
   "payment.override": "Override a payment outcome (audited, reason required)",
 

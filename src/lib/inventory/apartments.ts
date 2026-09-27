@@ -193,6 +193,7 @@ export interface ApartmentSummary {
   genderRestriction: "ANY" | "MALE" | "FEMALE";
   capacity: number;
   status: string;
+  listingStatus: string;
   image?: string;
   bedSpecifications: string[];
   bedTypes: string[];
@@ -215,6 +216,7 @@ export async function listApartmentsForLodge(lodgeId: string): Promise<Apartment
       genderRestriction: accommodationCategories.genderRestriction,
       capacity: accommodationUnits.capacity,
       status: accommodationUnits.status,
+      listingStatus: accommodationCategories.status,
       image: sql<string | null>`${accommodationUnits.images}[1]`,
       bedSpecifications: accommodationUnits.bedSpecifications,
       bedTypes: accommodationUnits.bedTypes,

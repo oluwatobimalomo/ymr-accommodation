@@ -1,8 +1,9 @@
-import { eq, min, sql } from "drizzle-orm";
+import { eq, inArray, min, sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { accommodationCategories, events, lodges } from "@/db/schema";
 import { recordAudit } from "@/lib/audit";
 import { authorize, type Actor } from "@/lib/authz/authorize";
+import type { Permission } from "@/lib/authz/permissions";
 
 export interface CreateLodgeInput {
   eventId: string;
@@ -127,8 +128,11 @@ export async function setLodgeStatus(
   });
 }
 
-export async function listLodges() {
-  return getDb().select({
+export async function listLodges(actor?: Actor) {
+  const canSeeAll = actor && (["inventory.read", "booking.read", "support.read"] as Permission[]).some((permission) => actor.globalPermissions.has(permission));
+  const visibleIds = actor && !canSeeAll ? [...actor.lodgeIds] : null;
+  if (visibleIds && visibleIds.length === 0) return [];
+  const query = getDb().select({
     id: lodges.id,
     name: lodges.name,
     address: lodges.address,
@@ -140,6 +144,7 @@ export async function listLodges() {
     .leftJoin(accommodationCategories, eq(accommodationCategories.lodgeId, lodges.id))
     .groupBy(lodges.id)
     .orderBy(lodges.name);
+  return visibleIds ? query.where(inArray(lodges.id, visibleIds)) : query;
 }
 
 export async function getLodge(lodgeId: string) {

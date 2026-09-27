@@ -10,14 +10,14 @@ export const metadata = { title: "FAQ" };
 
 export default function FaqPage() {
   return (
-    <div className="stack">
-      <h1>Frequently asked questions</h1>
-      {FAQS.map(([q, a]) => (
+    <div className="stack faq-page">
+      <header className="admin-page-heading"><div><span className="eyebrow">Guest help</span><h3>Frequently asked questions</h3><p>Quick answers for accommodation bookings and your stay.</p></div></header>
+      <div className="faq-grid">{FAQS.map(([q, a]) => (
         <div key={q} className="card stack">
-          <h3 style={{ margin: 0 }}>{q}</h3>
+          <h2>{q}</h2>
           <p style={{ margin: 0 }}>{a}</p>
         </div>
-      ))}
+      ))}</div>
     </div>
   );
 }

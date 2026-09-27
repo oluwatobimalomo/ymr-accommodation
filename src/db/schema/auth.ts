@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { userStatus } from "./enums";
+import { lodges } from "./inventory";
 
 export const users = pgTable(
   "users",
@@ -68,6 +69,33 @@ export const userRoles = pgTable(
       .references(() => roles.id, { onDelete: "cascade" }),
   },
   (t) => [primaryKey({ columns: [t.userId, t.roleId] })],
+);
+
+/** Explicit property scope for lodge-scoped staff roles. */
+export const userLodgeAssignments = pgTable(
+  "user_lodge_assignments",
+  {
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    lodgeId: uuid("lodge_id").notNull().references(() => lodges.id, { onDelete: "cascade" }),
+    assignedBy: uuid("assigned_by").references(() => users.id, { onDelete: "set null" }),
+    assignedAt: timestamp("assigned_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.lodgeId] }), index("user_lodge_assignments_lodge_idx").on(t.lodgeId)],
+);
+
+/** Self-service staff access requests remain disabled and role-less until approved by an admin. */
+export const staffAccessRequests = pgTable(
+  "staff_access_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+    requestedRole: text("requested_role").notNull(),
+    status: text("status").notNull().default("PENDING"),
+    reviewedBy: uuid("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("staff_access_requests_status_created_idx").on(t.status, t.createdAt)],
 );
 
 /** `id` is the SHA-256 of the cookie token, so a database leak cannot be replayed as sessions. */
