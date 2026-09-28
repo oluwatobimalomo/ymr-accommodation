@@ -14,9 +14,7 @@ export default async function AdminStaffPage({ searchParams }: { searchParams: P
   const params = await searchParams;
   return <div className="admin-page stack staff-access-page">
     <header className="admin-page-heading staff-access-heading"><div><span className="eyebrow">Administration</span><h1>Staff access</h1><p>Review access requests and manage operational staff.</p></div></header>
-    <div className="staff-page-status"><ErrorBanner error={params.error} />
-      {params.created && <div className="staff-access-success" role="status">Staff access saved.</div>}
-    </div>
+    <div className="staff-page-status"><ErrorBanner error={params.error} /></div>
     <div className="staff-access-grid">
       <section className="card staff-access-create">
         <div className="staff-access-card-heading"><span className="staff-access-kicker">Administrator setup</span><h2>Add a staff member</h2></div>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Actor } from "@/lib/authz/authorize";
 import { AdminNavigation } from "@/components/AdminNavigation";
 import { SupportNotifications } from "@/components/SupportNotifications";
+import { AdminActionFeedback } from "@/components/AdminActionFeedback";
 import { getRoleDefinition } from "@/lib/authz/roles";
 
 export function AdminShell({ actor, children }: { actor: Actor; children: React.ReactNode }) {
@@ -28,7 +29,10 @@ export function AdminShell({ actor, children }: { actor: Actor; children: React.
             <form method="post" action="/api/auth/logout"><button className="admin-signout" type="submit">Sign out</button></form>
           </div>
         </header>
-        <div className="admin-main">{children}</div>
+        <div className="admin-main">
+          <AdminActionFeedback />
+          {children}
+        </div>
       </div>
     </div>
   );

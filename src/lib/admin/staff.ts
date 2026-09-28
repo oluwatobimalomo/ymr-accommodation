@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { lodges, roles, sessions, staffAccessRequests, userLodgeAssignments, userRoles, users } from "@/db/schema";
 import { recordAudit } from "@/lib/audit";
@@ -38,6 +38,29 @@ export async function getStaffDirectory(actor: Actor) {
     lodges: lodgeRows,
     roles: assignableRoles,
   };
+}
+
+/** Latest self-service access request and pending count for the admin notification bell. */
+export async function getStaffAccessNotification(actor: Actor) {
+  authorize(actor, "users.manage");
+  const db = getDb();
+  const [latestRows, pendingRows] = await Promise.all([
+    db.select({
+      id: staffAccessRequests.id,
+      name: users.name,
+      requestedRole: staffAccessRequests.requestedRole,
+      status: staffAccessRequests.status,
+      createdAt: staffAccessRequests.createdAt,
+    })
+      .from(staffAccessRequests)
+      .innerJoin(users, eq(users.id, staffAccessRequests.userId))
+      .orderBy(desc(staffAccessRequests.createdAt))
+      .limit(1),
+    db.select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(staffAccessRequests)
+      .where(eq(staffAccessRequests.status, "PENDING")),
+  ]);
+  return { latest: latestRows[0] ?? null, pendingCount: pendingRows[0]?.count ?? 0 };
 }
 
 /** Public self-registration: save a password, but grant no role or session before admin approval. */

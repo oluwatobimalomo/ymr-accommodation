@@ -89,7 +89,13 @@ export async function listTickets(actor: Actor, filters: TicketFilters = {}) {
   if (filters.to && !Number.isNaN(Date.parse(filters.to))) where.push(lte(supportTickets.createdAt, new Date(`${filters.to}T23:59:59.999`)));
   if (filters.lodgeId && globalAccess) where.push(eq(lodges.id, filters.lodgeId));
   return db
-    .select({ ...getTableColumns(supportTickets), lodgeName: lodges.name, lodgeContactName: lodges.contactName, lodgeContactPhone: lodges.contactPhone })
+    .select({
+      ...getTableColumns(supportTickets),
+      lodgeName: lodges.name,
+      lodgeContactName: lodges.contactName,
+      lodgeContactPhone: lodges.contactPhone,
+      latestMessage: sql<string | null>`(select ${supportTicketMessages.body} from ${supportTicketMessages} where ${supportTicketMessages.ticketId} = ${supportTickets.id} order by ${supportTicketMessages.createdAt} desc limit 1)`,
+    })
     .from(supportTickets)
     .leftJoin(bookings, eq(bookings.id, supportTickets.bookingId))
     .leftJoin(accommodationCategories, eq(accommodationCategories.id, bookings.categoryId))
@@ -110,7 +116,7 @@ export async function getTicket(actor: Actor, ticketId: string) {
   if (!row) return null;
   authorize(actor, "support.read", { lodgeId: row.lodgeId });
   const ticket = row.ticket;
-  const lodge = row.lodgeId && row.lodgeName ? { name: row.lodgeName, contactName: row.contactName, contactPhone: row.contactPhone } : null;
+  const lodge = row.lodgeId && row.lodgeName ? { id: row.lodgeId, name: row.lodgeName, contactName: row.contactName, contactPhone: row.contactPhone } : null;
   const messages = await db
     .select()
     .from(supportTicketMessages)

@@ -32,12 +32,11 @@ function EventFields({ event }: { event?: Awaited<ReturnType<typeof listEvents>>
 export default async function AdminEventsPage({ searchParams }: { searchParams: Promise<{ error?: string; saved?: string }> }) {
   const actor = await requireActor();
   if (!can(actor, "events.manage")) notFound();
-  const [{ error, saved }, eventRows] = await Promise.all([searchParams, listEvents()]);
+  const [{ error }, eventRows] = await Promise.all([searchParams, listEvents()]);
 
   return <div className="admin-page stack events-admin-page">
     <header className="admin-page-heading"><div><span className="eyebrow">Administration</span><h1>Events</h1><p>Manage retreat editions, booking windows, and check-in dates.</p></div></header>
     <ErrorBanner error={error} />
-    {saved && <div className="staff-access-success" role="status">Event saved.</div>}
     <section className="card event-create-card"><div><span className="eyebrow">New edition</span><h2>Create an event</h2><p className="listing-meta">Events stay in the system for booking history. Archive editions that should no longer accept bookings.</p></div>
       <form method="post" action="/api/admin/events" className="stack"><input type="hidden" name="intent" value="create"/><EventFields/><button className="btn" type="submit">Create event</button></form>
     </section>

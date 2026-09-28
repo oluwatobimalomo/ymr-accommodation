@@ -1,9 +1,9 @@
-import Link from "next/link";
 import { ErrorBanner } from "@/components/AdminChrome";
 import { requireActor } from "@/lib/auth/require";
 import { listLodges } from "@/lib/inventory/lodges";
 import { listTickets } from "@/lib/support/tickets";
 import { AutoSubmitDate, AutoSubmitSelect } from "@/components/AutoSubmitSelect";
+import { SupportTicketInbox } from "@/components/SupportTicketInbox";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Support tickets" };
@@ -51,16 +51,7 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
         <label className="support-date-filter"><span>From</span><AutoSubmitDate name="from" defaultValue={params.from} /></label>
         <label className="support-date-filter"><span>To</span><AutoSubmitDate name="to" defaultValue={params.to} /></label>
       </form>
-      {tickets.length === 0 ? <div className="empty-state card"><h2>No matching support requests</h2><p>Adjust the filters or check back when guests submit a request.</p></div> : (
-        <div className="support-ticket-list">
-          {tickets.map((ticket) => (
-            <Link key={ticket.id} href={`/admin/support/${ticket.id}`} className="support-ticket-card">
-              <div className="support-ticket-main"><span className="eyebrow">{ticket.reference} · {ticket.category.replace(/_/g, " ")}</span><h2>{ticket.subject}</h2><p>{ticket.customerName} · {ticket.customerPhone} · prefers {ticket.contactPreference === "CALL" ? "a call" : "WhatsApp"}</p><small>{ticket.lodgeName ? `${ticket.lodgeName} · ` : "General support · "}{ticket.createdAt.toLocaleString()}</small></div>
-              <span className={`status-pill status-${ticket.status.toLowerCase().replace(/_/g, "-")}`}>{STATUS_LABEL[ticket.status]}</span>
-            </Link>
-          ))}
-        </div>
-      )}
+      {tickets.length === 0 ? <div className="empty-state card"><h2>No matching support requests</h2><p>Adjust the filters or check back when guests submit a request.</p></div> : <SupportTicketInbox tickets={tickets.map((ticket) => ({ ...ticket, createdAt: ticket.createdAt.toISOString() }))} />}
     </div>
   );
 }

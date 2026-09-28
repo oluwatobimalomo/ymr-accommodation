@@ -17,12 +17,12 @@ export default async function LodgeDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; q?: string; sort?: string; success?: string }>;
+  searchParams: Promise<{ error?: string; q?: string; sort?: string }>;
 }) {
   const actor = await requireActor();
   if (!can(actor, "inventory.read")) notFound();
   const { id } = await params;
-  const { error, q, sort, success } = await searchParams;
+  const { error, q, sort } = await searchParams;
   const lodge = await getLodge(id);
   if (!lodge) notFound();
   const query = q?.trim().toLocaleLowerCase() ?? "";
@@ -72,7 +72,6 @@ export default async function LodgeDetailPage({
         <Link href="/admin/lodges">&larr; All lodges</Link>
       </p>
       <ErrorBanner error={error} />
-      {success === "apartment-created" && <p className="alert success" role="status">Apartment saved. It is now included in this lodge’s apartment list.</p>}
       <section className="card lodge-overview stack">
         <div className="admin-page-heading">
           <div className="lodge-overview-copy"><span className="eyebrow">{lodge.status === "ACTIVE" ? "Active property" : "Archived property"}</span><h2>{lodge.name}</h2><p><strong>Address:</strong> {lodge.address || "Not provided"}</p><p><strong>Distance to Old Auditorium:</strong> {lodge.proximityKm ? `${lodge.proximityKm} km` : "Not provided"}</p></div>
@@ -82,6 +81,7 @@ export default async function LodgeDetailPage({
             {canWrite && <form method="post" action={`/api/admin/lodges/${lodge.id}`}><input type="hidden" name="intent" value="status"/><input type="hidden" name="status" value={lodge.status === "ACTIVE" ? "INACTIVE" : "ACTIVE"}/><button className="btn secondary" type="submit">{lodge.status === "ACTIVE" ? "Archive lodge" : "Restore lodge"}</button></form>}
           </div>
         </div>
+        {canWrite && lodge.status === "ACTIVE" && <p className="lodge-archive-note">Archiving hides this lodge from new bookings. Its booking history is kept, and you can restore it any time.</p>}
         <p className="lodge-contact-summary"><strong>Coordinator:</strong> {lodge.contactName || "Not provided"} <span aria-hidden="true">|</span> <strong>Phone Number:</strong> {lodge.contactPhone || "Not provided"}</p>
         {lodge.images.length > 0 && <div className="lodge-photo-strip">{lodge.images.map((src, i) => <ImageThumb key={i} src={src} alt={`${lodge.name} photo ${i + 1}`} aspect="16/10" />)}</div>}
       </section>
