@@ -70,9 +70,10 @@ export async function createStaffAccessRequest(input: { name: string; email: str
   if (input.password.length < MIN_PASSWORD_LENGTH) throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
   const db = getDb();
   return db.transaction(async (tx) => {
-    const duplicate = await tx.select({ id: users.id }).from(users).where(sql`lower(${users.email}) = ${profile.email}`).limit(1);
-    if (duplicate.length) throw new Error("An account or access request already uses that email address. Contact an administrator if you need help.");
+    // Keep duplicate and new-account requests closer in cost; the route also returns the same public response.
     const passwordHash = await hashPassword(input.password);
+    const duplicate = await tx.select({ id: users.id }).from(users).where(sql`lower(${users.email}) = ${profile.email}`).limit(1);
+    if (duplicate.length) return null;
     const [user] = await tx.insert(users).values({ name: profile.name, email: profile.email, passwordHash, status: "DISABLED" }).returning();
     if (!user) throw new Error("We could not save your access request. Please try again.");
     await tx.insert(staffAccessRequests).values({ userId: user.id, requestedRole: profile.role.key });

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ErrorBanner } from "@/components/AdminChrome";
-import { ImageThumb } from "@/components/ImageThumb";
+import { ImageCarousel } from "@/components/ImageCarousel";
 import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
 import { can } from "@/lib/authz/authorize";
 import { listLodges } from "@/lib/inventory/lodges";
@@ -48,7 +48,14 @@ export default async function LodgesPage({ searchParams }: { searchParams: Promi
         <div className="grid lodge-directory-grid">
           {lodges.map((lodge) => (
             <Link key={lodge.id} href={`/admin/lodges/${lodge.id}`} className="listing-card">
-              <ImageThumb src={lodge.mainImage} alt={lodge.name} aspect="16/10" />
+              <ImageCarousel
+                images={Array.from({ length: lodge.imageCount }, (_, index) => `/api/public/lodges/${encodeURIComponent(lodge.id)}/image?index=${index}`)}
+                alt={lodge.name}
+                className="lodge-directory-carousel"
+                autoAdvanceMs={4000}
+                advanceOnHover
+                showControls={false}
+              />
               <div className="listing-body">
                 <h3>{lodge.name}</h3>
                 <p className="listing-meta">

@@ -1,3 +1,5 @@
+import { isIP } from "node:net";
+
 /**
  * CSRF defence for cookie-authenticated POSTs, on top of SameSite=Lax:
  * the Origin header must match the configured app origin.
@@ -14,5 +16,9 @@ export function isSameOrigin(request: Request): boolean {
 }
 
 export function clientIp(request: Request): string | null {
-  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+  // Vercel overwrites x-forwarded-for with the connecting client address.
+  // On other hosts this header is client-controlled unless a trusted proxy is configured.
+  if (process.env.VERCEL !== "1") return null;
+  const value = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return value && value.length <= 64 && isIP(value) ? value : null;
 }

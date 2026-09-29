@@ -4289,7 +4289,7 @@ h2 { font-size: clamp(1.12rem, 1.65vw, 1.45rem); }
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
-.operations-guest-list, .support-ticket-list, .lodge-directory-grid {
+.operations-guest-list, .support-ticket-list {
   max-height: min(58dvh, 680px);
   overflow: auto;
   overscroll-behavior: contain;
@@ -4361,7 +4361,7 @@ h2 { font-size: clamp(1.12rem, 1.65vw, 1.45rem); }
   .report-filter-actions .text-button { justify-self: start; font-size: .72rem; }
   .data-table-wrap, .table-scroll, .dashboard-recent-scroll { max-height: min(58dvh, 600px); width: 100%; overflow: auto; overflow-x: auto; overflow-y: auto; }
   .data-table-card .data-table-wrap, .report-table-card .table-scroll { max-height: min(58dvh, 600px); overflow: auto; }
-  .operations-guest-list, .support-ticket-list, .lodge-directory-grid { max-height: min(58dvh, 600px); overflow: auto; }
+  .operations-guest-list, .support-ticket-list { max-height: min(58dvh, 600px); overflow: auto; }
 }
 
 @media (max-width: 380px) {
@@ -4392,6 +4392,26 @@ h2 { font-size: clamp(1.12rem, 1.65vw, 1.45rem); }
 
 .occupancy-report-filters { display: grid; grid-template-columns: minmax(220px, 300px) minmax(220px, 300px) auto auto; justify-content: start; align-items: end; gap: 12px; width: fit-content; max-width: 100%; min-width: 0; padding: 16px; }
 .occupancy-report-filters > .field { width: min(100%, 300px); min-width: 0; margin: 0; }
+
+/* Lodge directory cards are content-driven; don't constrain the whole grid to a nested scroll viewport. */
+.lodge-directory-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  align-content: start;
+  max-height: none;
+  overflow: visible;
+  scrollbar-gutter: auto;
+}
+.lodge-directory-grid .listing-card { min-width: 0; height: 100%; }
+.lodge-directory-carousel { width: 100%; aspect-ratio: 16 / 10; border-radius: 0; }
+.operations-guest-main .operations-guest-contact {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.operations-guest-contact .operations-guest-phone { white-space: nowrap; }
+.operations-guest-contact .operations-guest-email { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
 
 /* Keep responsive admin content inside its grid track and size report filters intentionally. */
 @media (max-width: 900px) {

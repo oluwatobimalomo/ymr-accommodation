@@ -1,9 +1,28 @@
 import { NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/db/client";
+import { bookingOrders, bookings } from "@/db/schema";
 import { isSameOrigin } from "@/lib/auth/origin";
 import { getBookingByReference } from "@/lib/booking/queries";
+import { enforcePublicRateLimits, normalizeRateLimitPhone } from "@/lib/auth/public-rate-limit";
 
 function normalizePhone(value: string) {
   return value.replace(/\s+/g, "");
+}
+
+async function hasMatchingLookupContact(reference: string, phone: string) {
+  const db = getDb();
+  // Keep failed known-reference/wrong-phone and unknown-reference requests on the same
+  // lightweight query path; only load private booking details after contact verification.
+  const [orders, directBookings] = await Promise.all([
+    db.select({ bookerPhone: bookingOrders.bookerPhone, giftPhone: bookingOrders.giftRecipientPhone })
+      .from(bookingOrders).where(eq(bookingOrders.reference, reference)).limit(1),
+    db.select({ bookerPhone: bookings.bookerPhone })
+      .from(bookings).where(eq(bookings.reference, reference)).limit(1),
+  ]);
+  const normalizedPhone = normalizePhone(phone);
+  return orders.some((row) => normalizePhone(row.bookerPhone) === normalizedPhone || Boolean(row.giftPhone && normalizePhone(row.giftPhone) === normalizedPhone))
+    || directBookings.some((row) => normalizePhone(row.bookerPhone) === normalizedPhone);
 }
 
 export async function POST(request: Request) {
@@ -15,12 +34,18 @@ export async function POST(request: Request) {
     const phone = typeof body.phone === "string" ? body.phone.trim() : "";
     if (!ticketId || !phone) return NextResponse.json({ error: "Enter your Ticket ID and booking phone number." }, { status: 400, headers: { "Cache-Control": "no-store" } });
 
-    const result = await getBookingByReference(ticketId);
-    const matchesBooker = result && normalizePhone(result.booking.bookerPhone) === normalizePhone(phone);
-    const matchesGiftRecipient = result?.giftRecipient?.phone && normalizePhone(result.giftRecipient.phone) === normalizePhone(phone);
-    if (!result || (!matchesBooker && !matchesGiftRecipient)) {
+    const limits = await enforcePublicRateLimits(request, [
+      { scope: "booking-lookup-ip", maxRequests: 30, windowMs: 15 * 60_000 },
+      { scope: "booking-lookup-reference", identity: ticketId, bindIdentityToIp: true, maxRequests: 10, windowMs: 15 * 60_000 },
+      { scope: "booking-lookup-pair", identity: `${ticketId}:${normalizeRateLimitPhone(phone)}`, bindIdentityToIp: true, maxRequests: 5, windowMs: 15 * 60_000 },
+    ]);
+    if (!limits.allowed) return NextResponse.json({ error: "Too many attempts. Please wait before trying again." }, { status: 429, headers: { "Cache-Control": "no-store", "Retry-After": String(limits.retryAfterSeconds) } });
+
+    if (!await hasMatchingLookupContact(ticketId, phone)) {
       return NextResponse.json({ error: "We couldn’t find a booking matching those details." }, { status: 404, headers: { "Cache-Control": "no-store" } });
     }
+    const result = await getBookingByReference(ticketId);
+    if (!result) return NextResponse.json({ error: "We couldn’t find a booking matching those details." }, { status: 404, headers: { "Cache-Control": "no-store" } });
 
     return NextResponse.json({
       ticketId: result.booking.reference,

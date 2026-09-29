@@ -138,7 +138,7 @@ export async function listLodges(actor?: Actor) {
     address: lodges.address,
     slug: lodges.slug,
     status: lodges.status,
-    mainImage: sql<string | null>`${lodges.images}[1]`,
+    imageCount: sql<number>`cardinality(${lodges.images})`,
     minimumPriceMinor: min(accommodationCategories.defaultPriceMinor),
   }).from(lodges)
     .leftJoin(accommodationCategories, eq(accommodationCategories.lodgeId, lodges.id))

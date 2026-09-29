@@ -122,7 +122,7 @@ export async function createBookingOrder(input: CreateBookingOrderInput): Promis
       if (category.maxOrderQuantity !== null && count > category.maxOrderQuantity) throw new Error(`${category.name} allows at most ${category.maxOrderQuantity} per order.`);
     }
     const amountMinor = details.reduce((total, { category, item }) => total + (
-      category.pricingModel === "PER_PERSON" ? category.defaultPriceMinor * item.occupants.length : category.defaultPriceMinor * item.occupants.length
+      category.pricingModel === "PER_PERSON" ? category.defaultPriceMinor * item.occupants.length : category.defaultPriceMinor
     ), 0);
     const reference = await nextBookingReference(tx, first.event.id, first.lodge.name);
     const [order] = await tx.insert(bookingOrders).values({

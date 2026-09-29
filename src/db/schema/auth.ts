@@ -113,3 +113,15 @@ export const sessions = pgTable(
   },
   (t) => [index("sessions_user_idx").on(t.userId), index("sessions_expires_idx").on(t.expiresAt)],
 );
+
+/** Shared, database-backed buckets for public endpoint throttling. Keys are hashes, never raw IPs or contact data. */
+export const publicRequestLimits = pgTable(
+  "public_request_limits",
+  {
+    key: text("key").primaryKey(),
+    windowStartedAt: timestamp("window_started_at", { withTimezone: true }).notNull(),
+    requestCount: integer("request_count").notNull().default(0),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("public_request_limits_expires_idx").on(t.expiresAt)],
+);

@@ -5,19 +5,21 @@ export const metadata = { title: "Request staff access" };
 
 const ERROR_MESSAGES: Record<string, string> = {
   invalid: "Check your details. Use a valid email address and a password with at least 12 characters.",
+  "rate-limited": "Too many requests. Please wait before trying again.",
+  unavailable: "We couldn’t submit your request right now. Please try again later.",
 };
 
 export default async function StaffRegistrationPage({ searchParams }: { searchParams: Promise<{ error?: string; submitted?: string }> }) {
   const params = await searchParams;
-  const error = params.error === "invalid" ? ERROR_MESSAGES.invalid : params.error;
+  const error = params.error ? ERROR_MESSAGES[params.error] ?? "We couldn’t submit your request right now. Please try again later." : undefined;
   return <div className="staff-registration-wrap">
     <section className="staff-registration-card">
       <div className="staff-registration-brand"><Image src="/ymr-mark.png" alt="" width={42} height={52} /><span><strong>YMR Accommodation</strong><small>Staff workspace</small></span></div>
       {params.submitted ? <div className="staff-registration-success" role="status">
         <span className="staff-registration-icon" aria-hidden="true">✓</span>
-        <span className="eyebrow">Request received</span>
-        <h1>Your access is awaiting approval</h1>
-        <p>An administrator will review your request and assign the right level of access. For security, you can sign in only after approval.</p>
+        <span className="eyebrow">Submission received</span>
+        <h1>Thank you</h1>
+        <p>If this email is eligible for staff access, an administrator will review it. You can sign in only after approval.</p>
         <Link className="btn" href="/staff/login">Return to staff sign in</Link>
       </div> : <>
         <span className="eyebrow">Staff registration</span>
