@@ -40,6 +40,7 @@ export const lodges = pgTable("lodges", {
   // this as "Lodge coordinator" (name + phone) per the simplified lodge form.
   contactName: text("contact_name").notNull().default(""),
   contactPhone: text("contact_phone").notNull().default(""),
+  whatsappGroupUrl: text("whatsapp_group_url"),
   images: text("images").array().notNull().default([]),
   status: lodgeStatus("status").notNull().default("ACTIVE"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

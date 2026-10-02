@@ -197,6 +197,13 @@
       "when": 1790493600000,
       "tag": "0027_public_request_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1790895464680,
+      "tag": "0028_lodge_whatsapp_groups",
+      "breakpoints": true
     }
   ]
 }

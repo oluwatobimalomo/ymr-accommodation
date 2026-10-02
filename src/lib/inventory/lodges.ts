@@ -13,7 +13,24 @@ export interface CreateLodgeInput {
   address?: string;
   contactName?: string;
   contactPhone?: string;
+  whatsappGroupUrl?: string | null;
   images?: string[];
+}
+
+function normalizeWhatsappGroupUrl(value?: string | null): string | null {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) return null;
+
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new Error("Enter a valid WhatsApp group invite link.");
+  }
+  if (url.protocol !== "https:" || url.hostname.toLowerCase() !== "chat.whatsapp.com" || !url.pathname.slice(1)) {
+    throw new Error("Use a WhatsApp group invite link from chat.whatsapp.com.");
+  }
+  return url.toString();
 }
 
 /** Slug must be URL-safe: lowercase letters, digits and hyphens only. */
@@ -40,6 +57,7 @@ export async function createLodge(actor: Actor, input: CreateLodgeInput) {
         address: input.address ?? "",
         contactName: input.contactName ?? "",
         contactPhone: input.contactPhone ?? "",
+        whatsappGroupUrl: normalizeWhatsappGroupUrl(input.whatsappGroupUrl),
         images: input.images ?? [],
       })
       .returning();
@@ -63,6 +81,7 @@ export interface UpdateLodgeInput {
   proximityKm?: string | null;
   contactName?: string;
   contactPhone?: string;
+  whatsappGroupUrl?: string | null;
   images?: string[];
 }
 
@@ -73,9 +92,13 @@ export async function updateLodge(actor: Actor, lodgeId: string, input: UpdateLo
     const [before] = await tx.select().from(lodges).where(eq(lodges.id, lodgeId)).limit(1);
     if (!before) throw new Error("That lodge could not be found.");
 
+    const update = { ...input, updatedAt: new Date() };
+    if (input.whatsappGroupUrl !== undefined) {
+      update.whatsappGroupUrl = normalizeWhatsappGroupUrl(input.whatsappGroupUrl);
+    }
     const [after] = await tx
       .update(lodges)
-      .set({ ...input, updatedAt: new Date() })
+      .set(update)
       .where(eq(lodges.id, lodgeId))
       .returning();
 

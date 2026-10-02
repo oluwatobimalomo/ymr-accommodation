@@ -33,6 +33,7 @@ export default async function EditLodgePage({ params, searchParams }: {
           <div className="field"><label htmlFor="proximityKm">Proximity to Old Auditorium (km)</label><input id="proximityKm" name="proximityKm" type="number" min="0" step="0.1" defaultValue={lodge.proximityKm ?? ""} placeholder="e.g. 1.5" /></div>
           <div className="field"><label htmlFor="contactName">Lodge coordinator name</label><input id="contactName" name="contactName" defaultValue={lodge.contactName} /></div>
           <div className="field"><label htmlFor="contactPhone">Lodge coordinator phone</label><input id="contactPhone" name="contactPhone" type="tel" defaultValue={lodge.contactPhone} /></div>
+          <div className="field lodge-form-wide"><label htmlFor="whatsappGroupUrl">Lodge WhatsApp group invite link <span className="field-optional">Optional</span></label><input id="whatsappGroupUrl" name="whatsappGroupUrl" type="url" inputMode="url" defaultValue={lodge.whatsappGroupUrl ?? ""} placeholder="https://chat.whatsapp.com/…" aria-describedby="whatsapp-group-help" /><small id="whatsapp-group-help" className="field-hint">Guests can request to join after booking. Lodge coordinators approve requests in WhatsApp.</small></div>
           <button className="btn lodge-form-wide" type="submit">Save lodge details</button>
         </form>
       </section>

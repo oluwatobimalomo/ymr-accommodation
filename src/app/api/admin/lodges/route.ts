@@ -14,6 +14,7 @@ export async function POST(request: Request) {
       address: String(form.get("address") ?? ""),
       contactName: String(form.get("contactName") ?? ""),
       contactPhone: String(form.get("contactPhone") ?? ""),
+      whatsappGroupUrl: String(form.get("whatsappGroupUrl") ?? ""),
       images,
     });
   }, "/admin/lodges");

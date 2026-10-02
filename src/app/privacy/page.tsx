@@ -10,7 +10,7 @@ export default function PrivacyPage() {
     <article className="legal-page stack">
       <header className="legal-hero">
         <span className="eyebrow">YMR Accommodation · Guest information</span>
-        <h3>Privacy notice</h3>
+        <h3>Privacy Notice</h3>
         <p>Here’s what information is used to arrange your accommodation and how it is handled.</p>
       </header>
       <div className="legal-layout">
@@ -33,7 +33,7 @@ export default function PrivacyPage() {
           </section>
           <section id="access" className="legal-section card">
             <span className="legal-number">03</span><div><h2>Access and payments</h2>
-            <p>Booking details are available to authorised accommodation staff for these operational purposes. Roommates do not see one another’s contact details. Payments are processed through Paystack; YMR Accommodation does not store your card details.</p></div>
+            <p>Booking details are available to authorised accommodation staff for these operational purposes. Payments are processed through Paystack; YMR Accommodation does not store your card details.</p></div>
           </section>
           <section id="retention" className="legal-section card">
             <span className="legal-number">04</span><div><h2>Storage and retention</h2>

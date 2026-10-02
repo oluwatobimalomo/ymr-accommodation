@@ -10,7 +10,7 @@ export default function TermsPage() {
     <article className="legal-page stack">
       <header className="legal-hero">
         <span className="eyebrow">YMR Accommodation · Guest information</span>
-        <h3>Booking terms</h3>
+        <h3>Booking Terms</h3>
         <p>Please review how accommodation reservations, guest details, and support requests are handled.</p>
       </header>
       <div className="legal-layout">

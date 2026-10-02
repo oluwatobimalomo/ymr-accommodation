@@ -81,8 +81,11 @@ export default async function LodgeDetailPage({
             {canWrite && <form method="post" action={`/api/admin/lodges/${lodge.id}`}><input type="hidden" name="intent" value="status"/><input type="hidden" name="status" value={lodge.status === "ACTIVE" ? "INACTIVE" : "ACTIVE"}/><button className="btn secondary" type="submit">{lodge.status === "ACTIVE" ? "Archive lodge" : "Restore lodge"}</button></form>}
           </div>
         </div>
-        {canWrite && lodge.status === "ACTIVE" && <p className="lodge-archive-note">Archiving hides this lodge from new bookings. Its booking history is kept, and you can restore it any time.</p>}
-        <p className="lodge-contact-summary"><strong>Coordinator:</strong> {lodge.contactName || "Not provided"} <span aria-hidden="true">|</span> <strong>Phone Number:</strong> {lodge.contactPhone || "Not provided"}</p>
+        <div className="lodge-contact-summary">
+          <span><strong>Coordinator:</strong> {lodge.contactName || "Not provided"}</span>
+          <span className="lodge-contact-separator" aria-hidden="true">|</span>
+          <span><strong>Phone Number:</strong> {lodge.contactPhone || "Not provided"}</span>
+        </div>
         {lodge.images.length > 0 && <div className="lodge-photo-strip">{lodge.images.map((src, i) => <ImageThumb key={i} src={src} alt={`${lodge.name} photo ${i + 1}`} aspect="16/10" />)}</div>}
       </section>
 

@@ -31,6 +31,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       proximityKm: proximityRaw === "" ? null : proximityRaw,
       contactName: String(form.get("contactName") ?? ""),
       contactPhone: String(form.get("contactPhone") ?? ""),
+      whatsappGroupUrl: String(form.get("whatsappGroupUrl") ?? ""),
     });
   });
 }

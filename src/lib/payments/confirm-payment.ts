@@ -294,7 +294,7 @@ async function enqueueBookingEmails(
   tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0],
   input: { dedupeBase: string; reference: string; recipientName: string; recipientEmail: string; bookerName: string; amountMinor: number; bookingIds: string[]; gift?: { name: string; email: string } },
 ) {
-  const bookingRows = await tx.select({ id: bookings.id, reference: bookings.reference, categoryName: accommodationCategories.name, lodgeId: lodges.id, lodgeName: lodges.name, lodgeAddress: lodges.address, lodgeImages: lodges.images, checkInDate: accommodationCategories.checkInDate, checkOutDate: accommodationCategories.checkOutDate, coordinatorName: lodges.contactName, coordinatorPhone: lodges.contactPhone })
+  const bookingRows = await tx.select({ id: bookings.id, reference: bookings.reference, categoryName: accommodationCategories.name, lodgeId: lodges.id, lodgeName: lodges.name, lodgeAddress: lodges.address, lodgeImages: lodges.images, whatsappGroupUrl: lodges.whatsappGroupUrl, checkInDate: accommodationCategories.checkInDate, checkOutDate: accommodationCategories.checkOutDate, coordinatorName: lodges.contactName, coordinatorPhone: lodges.contactPhone })
     .from(bookings).innerJoin(accommodationCategories, eq(accommodationCategories.id, bookings.categoryId)).innerJoin(lodges, eq(lodges.id, accommodationCategories.lodgeId)).where(inArray(bookings.id, input.bookingIds));
   const occupantRows = await tx.select({ bookingId: bookingOccupants.bookingId, name: bookingOccupants.name, roomName: rooms.name, bedspace: bedspaces.letter })
     .from(bookingOccupants).leftJoin(bedspaces, eq(bedspaces.id, bookingOccupants.bedspaceId)).leftJoin(rooms, eq(rooms.id, bedspaces.roomId)).where(inArray(bookingOccupants.bookingId, input.bookingIds));
@@ -305,6 +305,7 @@ async function enqueueBookingEmails(
     lodgeName: row.lodgeName,
     lodgeAddress: row.lodgeAddress,
     lodgeImage: row.lodgeImages[0] ?? null,
+    whatsappGroupUrl: row.whatsappGroupUrl,
     allocationLabels: occupantRows.filter((occupant) => occupant.bookingId === row.id && occupant.bedspace).map((occupant) => `${occupant.roomName ?? "Room"} · BDS ${occupant.bedspace}`),
     checkIn: formatDateOnly(row.checkInDate),
     checkOut: formatDateOnly(row.checkOutDate),

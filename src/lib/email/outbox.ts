@@ -7,7 +7,16 @@ const MAX_ATTEMPTS = 5;
 export async function processPendingEmails(limit = 20) {
   const apiKey = process.env.RESEND_API_KEY;
   const configuredFrom = process.env.EMAIL_FROM;
-  if (!apiKey || !configuredFrom) return { sent: 0, queued: true };
+  if (!apiKey || !configuredFrom) {
+    const missingConfig = [
+      !apiKey && "RESEND_API_KEY",
+      !configuredFrom && "EMAIL_FROM",
+    ].filter(Boolean);
+    // Keep queued messages untouched so they can be delivered once the
+    // deployment is configured, but make the misconfiguration visible in
+    // function logs and to the scheduled outbox worker.
+    throw new Error(`Email delivery is not configured. Missing: ${missingConfig.join(", ")}.`);
+  }
   const address = configuredFrom.match(/<([^<>]+)>/)?.[1] ?? configuredFrom;
   const from = `YMR 2026 Accommodation <${address.trim()}>`;
 

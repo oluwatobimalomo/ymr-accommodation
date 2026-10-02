@@ -23,16 +23,17 @@ export default async function AccommodationPage({ searchParams }: { searchParams
       return a.name.localeCompare(b.name);
     });
   return (
-    <div className="stack">
-      <div className="page-intro">
-        <span className="eyebrow">Find your stay</span>
-        <h1>Accommodation</h1>
-        <p>Browse trusted places to stay for the Young Ministers Retreat.</p>
+    <div className="stack guest-experience-page guest-accommodation-page">
+      <div className="page-intro guest-editorial-intro">
+        <span className="eyebrow">Young Ministers Retreat · 2026</span>
+        <h1>Find your place to stay.</h1>
+        <p>Explore trusted accommodation near the retreat and choose the stay that suits you.</p>
+        <span className="guest-result-count">{lodges.length} {lodges.length === 1 ? "place" : "places"} to explore</span>
       </div>
       <SavedBagNotice />
       {allLodges.length > 0 && (
-        <form method="get" className="directory-tools" role="search">
-          <div className="directory-search-group"><label className="directory-search"><span className="sr-only">Search accommodations</span><input name="q" type="search" defaultValue={q} placeholder="Search by lodge name or location" /></label><button className="btn secondary" type="submit">Search</button></div>
+        <form method="get" className="directory-tools editorial-directory-tools" role="search">
+          <div className="directory-search-group"><label className="directory-search"><span className="sr-only">Search accommodations</span><input name="q" type="search" defaultValue={q} placeholder="Lodge or location" /></label><button className="btn secondary" type="submit">Search</button></div>
           <label className="directory-sort"><span>Sort by</span><AutoSubmitSelect name="sort" defaultValue={sort ?? "name-asc"} options={[
             { value: "name-asc", label: "Name: A to Z" }, { value: "name-desc", label: "Name: Z to A" }, { value: "price-asc", label: "Price: lowest first" }, { value: "price-desc", label: "Price: highest first" },
           ]} /></label>
@@ -45,7 +46,7 @@ export default async function AccommodationPage({ searchParams }: { searchParams
       ) : (
         <div className="grid accommodation-listing-grid">
           {lodges.map((lodge) => (
-            <Link key={lodge.id} href={`/accommodation/${lodge.slug}`} className="listing-card">
+            <Link key={lodge.id} href={`/accommodation/${lodge.slug}`} className="listing-card guest-lodge-card">
               <LodgeImagePreview images={lodge.images} fallback={lodge.mainImage} alt={lodge.name} />
               <div className="listing-body">
                 <h3>{lodge.name}</h3>

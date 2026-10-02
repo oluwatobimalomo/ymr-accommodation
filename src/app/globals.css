@@ -2700,6 +2700,32 @@ body:has(.admin-login-shell) main > .wrap {
   }
 }
 
+/* Keep lodge coordinator contact details together when there's room. */
+.lodge-overview .lodge-contact-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.lodge-overview .lodge-contact-summary > span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.lodge-overview .lodge-contact-summary .lodge-contact-separator {
+  color: var(--color-muted);
+}
+
+/* The save action spans the form row but should stay sized to its label. */
+.lodge-details-form > button.lodge-form-wide {
+  justify-self: start;
+  width: fit-content;
+  max-width: 100%;
+}
+
 /* Compact footer and a clearly aligned signed-in account area. */
 .admin-topbar { justify-content: flex-end; }
 .admin-account { margin-left: auto; justify-content: flex-end; }
@@ -4535,4 +4561,362 @@ h2 { font-size: clamp(1.12rem, 1.65vw, 1.45rem); }
 
 @media (max-width: 640px) {
   .admin-action-feedback { margin-bottom: 10px; font-size: .82rem; }
+}
+
+/* Guest accommodation journey: editorial typography, photo-led cards and calm hierarchy. */
+.guest-experience-page { --guest-forest: #173f34; --guest-soft: #f0f4ef; gap: 4px; }
+.guest-experience-page > .guest-editorial-intro { max-width: 780px; margin: 8px 0 20px; }
+.guest-editorial-intro .eyebrow { color: var(--color-brand-strong); font-size: .72rem; letter-spacing: .16em; }
+.guest-experience-page .guest-editorial-intro h1 { max-width: 14ch; margin: 0 0 11px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(2.5rem, 5vw, 4.25rem); font-weight: 500; letter-spacing: -.055em; line-height: .99; }
+.guest-editorial-intro p { max-width: 58ch; color: #626d67; font-size: clamp(1rem, 1.3vw, 1.15rem); line-height: 1.65; }
+.guest-result-count { display: inline-flex; margin-top: 18px; color: var(--guest-forest); font-size: .83rem; font-weight: 700; letter-spacing: .025em; }
+.editorial-directory-tools { align-items: end; margin: 0 0 8px; padding: 13px; border-color: #e6e9e4; border-radius: 16px; background: rgb(255 255 255 / 88%); box-shadow: 0 8px 24px rgb(28 45 35 / 4%); }
+.editorial-directory-tools .directory-search input,
+.editorial-directory-tools .directory-sort select { min-height: 48px; border-color: #dce2dc; border-radius: 11px; background: #fbfcfa; font-size: .94rem; }
+.editorial-directory-tools .directory-sort { flex-basis: 210px; }
+.editorial-directory-tools .directory-search-group { width: min(100%, 700px); }
+.guest-lodge-card { border-color: #e6e9e4; border-radius: 18px; box-shadow: 0 9px 28px rgb(28 45 35 / 6%); }
+.guest-lodge-card:hover,
+.guest-lodge-card:focus-visible { transform: translateY(-4px); border-color: #d8c4ad; box-shadow: 0 18px 36px rgb(28 45 35 / 12%); }
+.guest-lodge-card .lodge-image-preview { aspect-ratio: 1.55; background: #e9eee9; }
+.guest-lodge-card .lodge-image-preview::after { position: absolute; inset: 45% 0 0; background: linear-gradient(transparent, rgb(13 27 23 / 19%)); content: ""; pointer-events: none; }
+.guest-lodge-card .listing-body { display: grid; gap: 5px; padding: 18px 19px 20px; }
+.guest-lodge-card h3 { margin: 0; color: #24372f; font-size: 1.18rem; letter-spacing: -.035em; }
+.guest-lodge-card .listing-meta { display: -webkit-box; overflow: hidden; color: #69756e; font-size: .88rem; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.guest-lodge-card .listing-price { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin: 11px 0 0; color: var(--guest-forest); font-size: 1.08rem; }
+.guest-lodge-card .listing-price .price-unit { color: #78817c; font-size: .76rem; }
+.guest-lodge-page > p:first-child { margin: 0; }
+.guest-back-link { display: inline-flex; align-items: center; min-height: 42px; color: #53675d; font-size: .9rem; font-weight: 650; text-decoration: none; }
+.guest-back-link:hover { color: var(--color-brand-strong); }
+.guest-lodge-hero { display: grid; grid-template-columns: minmax(260px, .85fr) minmax(0, 1.15fr); align-items: stretch; gap: clamp(22px, 4vw, 48px); margin: 0 0 14px; padding: clamp(18px, 3vw, 32px); overflow: hidden; border: 1px solid #e6e9e4; border-radius: 22px; background: linear-gradient(135deg, #fff 55%, #f1f5f0); box-shadow: 0 14px 38px rgb(28 45 35 / 5%); }
+.guest-lodge-hero .guest-editorial-intro { align-self: center; margin: 0; }
+.guest-lodge-hero .guest-editorial-intro h1 { font-size: clamp(2.3rem, 4vw, 3.55rem); }
+.guest-lodge-hero .guest-lodge-address { margin-bottom: 8px; color: #344f43; font-size: .96rem; font-weight: 650; }
+.guest-lodge-hero .lodge-image-preview { min-height: 250px; height: 100%; aspect-ratio: 1.5; border-radius: 15px; background: #e6ece6; }
+.guest-lodge-hero .lodge-photo-count { z-index: 1; right: 14px; bottom: 14px; padding: 7px 11px; background: rgb(20 40 33 / 78%); }
+.guest-lodge-page .editorial-directory-tools { margin-top: 8px; }
+.guest-lodge-page .apartment-sections > h2 { margin: 20px 0 0; color: #263c32; font-family: Georgia, "Times New Roman", serif; font-size: clamp(1.7rem, 2.5vw, 2.25rem); font-weight: 500; letter-spacing: -.04em; }
+.guest-lodge-page .ensuite-note { border-color: #e4e9e3; border-radius: 13px; background: #f3f6f2; color: #52655b; }
+.guest-booking-page > p:first-child { margin: 0; }
+.guest-booking-intro { margin-bottom: 8px !important; }
+.guest-booking-intro h1 { max-width: 20ch; }
+.booking-offer-summary { display: grid; grid-template-columns: minmax(180px, .7fr) minmax(250px, 1fr) minmax(0, 1.3fr); align-items: center; gap: 18px; width: min(100%, 1040px); margin: 0 0 8px; padding: 18px 20px; border: 1px solid #e3e8e2; border-radius: 17px; background: linear-gradient(115deg, #fff, #f3f7f2); box-shadow: 0 8px 24px rgb(28 45 35 / 4%); }
+.booking-offer-price .eyebrow { color: #78847d; font-size: .68rem; letter-spacing: .13em; text-transform: uppercase; }
+.booking-offer-price p { margin: 5px 0 0; }
+.booking-offer-price .booking-price { color: var(--guest-forest); font-size: 1.45rem; }
+.booking-offer-price .price-unit { display: block; margin-top: 1px; font-size: .8rem; }
+.booking-offer-summary .stay-date-panel { width: 100%; min-height: 60px; padding: 11px 13px; border-color: #e1e8e0; background: #fff; }
+.booking-offer-summary .booking-offer-description { margin: 0; color: #66736b; font-size: .9rem; line-height: 1.55; }
+.guest-experience-page :is(a, button, input, select, textarea):focus-visible { outline: 3px solid rgb(29 78 216 / 65%); outline-offset: 3px; }
+
+@media (max-width: 760px) {
+  .guest-editorial-intro h1 { font-size: clamp(2.35rem, 9vw, 3.25rem); }
+  .guest-lodge-hero { grid-template-columns: minmax(0, 1fr); gap: 18px; padding: 20px; }
+  .guest-lodge-hero .lodge-image-preview { min-height: 0; aspect-ratio: 1.55; }
+  .booking-offer-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 15px; }
+  .booking-offer-summary .booking-offer-description { grid-column: 1 / -1; }
+}
+@media (max-width: 560px) {
+  .guest-experience-page > .guest-editorial-intro { margin-bottom: 12px; }
+  .guest-result-count { margin-top: 12px; }
+  .editorial-directory-tools { display: grid; grid-template-columns: minmax(0, 1fr); align-items: end; gap: 9px; padding: 10px; }
+  .editorial-directory-tools .directory-search-group { display: flex; grid-column: 1; width: 100%; gap: 8px; }
+  .editorial-directory-tools .directory-search { flex: 1 1 auto; }
+  .editorial-directory-tools .directory-search input { min-width: 0; min-height: 46px; padding-inline: 11px; font-size: 16px; }
+  .editorial-directory-tools .directory-search-group .btn { min-height: 46px; padding-inline: 15px; }
+  .editorial-directory-tools .directory-sort { grid-column: 1; width: min(100%, 240px); flex: initial; }
+  .editorial-directory-tools .directory-sort select { min-height: 44px; padding-block: 8px; font-size: 16px; }
+  .guest-lodge-card .lodge-image-preview { aspect-ratio: 1.6; }
+  .guest-lodge-hero { margin-inline: -2px; padding: 16px; border-radius: 18px; }
+  .booking-offer-summary { grid-template-columns: minmax(0, 1fr); gap: 11px; }
+  .booking-offer-summary .booking-offer-description { grid-column: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .guest-lodge-card,
+  .guest-lodge-card:hover,
+  .guest-lodge-card:focus-visible { transition: none; transform: none; }
+}
+
+/* Apartment selection dialog: keep the full bedspace map visible on desktop. */
+@media (min-width: 761px) {
+  .apartment-detail-dialog.has-bedspace-selection {
+    box-sizing: border-box;
+    max-height: calc(100dvh - 48px);
+    overflow-y: auto;
+  }
+  .apartment-detail-dialog.has-bedspace-selection .apartment-detail-layout {
+    align-items: center;
+  }
+  .apartment-detail-dialog.has-bedspace-selection .apartment-detail-photo .apartment-carousel {
+    height: min(60dvh, 560px);
+    aspect-ratio: auto;
+  }
+  .apartment-detail-dialog.has-bedspace-selection .apartment-detail-copy {
+    max-height: none;
+    overflow: visible;
+  }
+  .apartment-detail-dialog.has-bedspace-selection .bedspace-pick-list {
+    max-height: none;
+    overflow: visible;
+  }
+  .apartment-detail-dialog.has-bedspace-selection .bedspace-room-list {
+    overflow: visible;
+  }
+  .apartment-detail-dialog.has-bedspace-selection .bedspace-seat {
+    min-height: 48px;
+    padding: 4px 3px;
+  }
+}
+
+@media (min-width: 1400px) {
+  .apartment-detail-dialog.has-bedspace-selection .bedspace-seat-grid {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+  }
+}
+
+/* Keep checkout details readable while the payment actions remain easy to reach. */
+.bag-drawer:has(.bag-checkout-form) {
+  overflow: hidden;
+  gap: 0;
+  padding: 24px;
+}
+.bag-drawer:has(.bag-checkout-form) > header {
+  flex: 0 0 auto;
+  align-items: center;
+  margin: 0 -24px 0;
+  padding: 0 24px 18px;
+  border-bottom: 1px solid #e8ede9;
+}
+.bag-drawer:has(.bag-checkout-form) > header .eyebrow {
+  color: var(--color-brand-strong);
+  font-size: .7rem;
+  letter-spacing: .14em;
+}
+.bag-drawer:has(.bag-checkout-form) > header h2 {
+  color: #20382f;
+  font-size: 1.55rem;
+  letter-spacing: -.04em;
+}
+.bag-checkout-form {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 13px;
+  margin: 0;
+  padding: 17px 0 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.bag-checkout-form > * + * { margin-top: 0; }
+.bag-checkout-form > p { margin: 0; color: #69766f; font-size: .9rem; line-height: 1.45; }
+.bag-checkout-form > .field { gap: 6px; }
+.bag-checkout-form > .field > span,
+.bag-checkout-form .bag-guest-group .field > span { color: #44574d; font-size: .82rem; font-weight: 650; }
+.bag-checkout-form > .field input,
+.bag-checkout-form > .field select,
+.bag-checkout-form .bag-guest-group .field input,
+.bag-checkout-form .bag-guest-group .field select { min-height: 46px; background: #fbfcfa; font-size: 16px; }
+.bag-checkout-form .gift-booking-toggle {
+  flex: 0 0 auto;
+  gap: 11px;
+  padding: 13px 14px;
+  border-color: #eee3d8;
+  border-radius: 13px;
+  background: #fcf8f4;
+}
+.bag-checkout-form .gift-booking-toggle strong { color: #354b40; font-size: .92rem; }
+.bag-checkout-form .gift-booking-toggle small { font-size: .8rem; line-height: 1.4; }
+.bag-checkout-form .bag-guest-group {
+  flex: 0 0 auto;
+  gap: 11px;
+  padding: 13px 14px 14px;
+  border-color: #e2e9e3;
+  border-radius: 13px;
+  background: #fbfcfa;
+}
+.bag-checkout-form .bag-guest-group legend { color: #354b40; font-size: .86rem; }
+.bag-checkout-form .bag-guest-group > p { margin: 0; color: #69766f; font-size: .85rem; line-height: 1.45; }
+.bag-checkout-footer {
+  position: sticky;
+  z-index: 1;
+  bottom: 0;
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding: 12px 0 0;
+  border-top: 1px solid #e3e9e4;
+  background: var(--color-surface);
+  box-shadow: 0 -10px 18px rgb(255 255 255 / 88%);
+}
+.bag-checkout-form .bag-total { margin: 0; padding: 1px 0 12px; border: 0; color: #53645b; font-size: .95rem; }
+.bag-checkout-form .bag-total strong { color: #20382f; font-size: 1.3rem; font-variant-numeric: tabular-nums; }
+.bag-checkout-actions { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(120px, .85fr); gap: 9px; }
+.bag-checkout-actions .btn { min-width: 0; min-height: 48px; padding-inline: 14px; border-radius: 12px; font-size: .88rem; }
+
+@media (max-width: 760px) {
+  .bag-drawer:has(.bag-checkout-form) { padding: 18px; }
+  .bag-drawer:has(.bag-checkout-form) > header { margin-inline: -18px; padding: 0 18px 14px; }
+  .bag-checkout-form { gap: 11px; padding-top: 14px; }
+  .bag-checkout-form .gift-booking-toggle { padding: 12px; }
+  .bag-checkout-form .bag-guest-group { gap: 9px; padding: 11px 12px 12px; }
+}
+@media (max-width: 380px) {
+  .bag-checkout-actions { grid-template-columns: minmax(0, 1.25fr) minmax(104px, .85fr); gap: 7px; }
+  .bag-checkout-actions .btn { padding-inline: 8px; font-size: .76rem; }
+}
+
+/* Shared finish across guest, account, and administration pages. These rules
+   tune surfaces and interaction states without changing page geometry. */
+:where(.card, .metric-card, .directory-tools, .data-table-card, .support-ticket-card) {
+  background-clip: padding-box;
+}
+
+:where(.card, .metric-card, .directory-tools, .data-table-card, .support-ticket-card):focus-within {
+  border-color: #cfddd3;
+}
+
+.btn:focus-visible,
+.nav a:focus-visible,
+.footer-links a:focus-visible,
+.text-link:focus-visible {
+  outline-color: #27794e;
+}
+
+.field :is(input, select, textarea):hover,
+.support-date-filter input:hover,
+.audit-filters input:hover {
+  border-color: #b9c9bf;
+}
+
+.field :is(input, select, textarea):disabled,
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: .62;
+}
+
+.field-optional {
+  margin-left: 5px;
+  color: #75827b;
+  font-size: .78em;
+  font-weight: 500;
+}
+
+.home-step {
+  border-color: #e5e9e4;
+  background: linear-gradient(155deg, #fff 0%, #fbfcfa 100%);
+  box-shadow: 0 8px 24px rgb(29 55 42 / 4%);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.home-step:hover {
+  transform: translateY(-2px);
+  border-color: #d9c8b5;
+  box-shadow: 0 14px 28px rgb(29 55 42 / 7%);
+}
+
+.home-help {
+  background: linear-gradient(115deg, #173f34, #204c3e);
+  box-shadow: 0 14px 34px rgb(22 58 48 / 12%);
+}
+
+.booking-lookup-form {
+  border-color: #e2e9e3;
+  background: linear-gradient(155deg, #fff 0%, #fbfcfa 100%);
+}
+
+.booking-lookup-form .field input {
+  background: #fff;
+}
+
+.booking-ticket-card,
+.ticket-booker-details,
+.ticket-order-items,
+.ticket-occupants,
+.ticket-coordinator-card {
+  border-color: #e2e9e3;
+  box-shadow: 0 10px 28px rgb(29 55 42 / 5%);
+}
+
+.ticket-booker-details,
+.ticket-coordinator-card {
+  display: grid;
+  gap: 5px;
+}
+
+.ticket-booker-details > strong,
+.ticket-coordinator-card strong {
+  color: #243b34;
+}
+
+.ticket-booker-details > span:not(.eyebrow) {
+  color: #66736c;
+  overflow-wrap: anywhere;
+}
+
+.faq-grid > .card {
+  align-content: start;
+  border-color: #e4e9e4;
+  background: linear-gradient(150deg, #fff 0%, #fbfcfa 100%);
+  box-shadow: 0 7px 20px rgb(29 55 42 / 4%);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.faq-grid > .card:hover {
+  transform: translateY(-2px);
+  border-color: #d9c8b5;
+  box-shadow: 0 12px 24px rgb(29 55 42 / 7%);
+}
+
+.legal-hero,
+.legal-section,
+.legal-contents {
+  border-color: #e4e9e4;
+  box-shadow: 0 8px 24px rgb(29 55 42 / 4%);
+}
+
+.legal-contents a {
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.admin-main .data-table tbody tr:hover td {
+  background-color: #fafcf9;
+}
+
+.admin-main .data-table tbody tr:hover td:first-child {
+  box-shadow: inset 2px 0 #e88a35;
+}
+
+.admin-main .data-table th {
+  background: #f3f6f3;
+}
+
+.admin-main .empty-state {
+  border-color: #e1e8e2;
+  border-radius: 16px;
+  background: linear-gradient(150deg, #fff, #fafcf9);
+}
+
+.support-aside {
+  box-shadow: 0 14px 32px rgb(20 58 52 / 13%);
+}
+
+.support-ticket-dialog,
+.apartment-detail-dialog,
+.booking-ticket {
+  box-shadow: 0 28px 90px rgb(12 30 23 / 24%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-step,
+  .faq-grid > .card,
+  .legal-contents a {
+    transition: none;
+  }
+
+  .home-step:hover,
+  .faq-grid > .card:hover {
+    transform: none;
+  }
 }

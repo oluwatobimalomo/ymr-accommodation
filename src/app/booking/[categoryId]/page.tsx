@@ -22,21 +22,24 @@ export default async function BookingPage({
   const { category, lodge, rooms } = data;
 
   return (
-    <div className="stack">
+    <div className="stack guest-experience-page guest-booking-page">
       <p>
-        <Link href={`/accommodation/${lodge.slug}`}>&larr; {lodge.name}</Link>
+        <Link className="guest-back-link" href={`/accommodation/${lodge.slug}`}>&larr; {lodge.name}</Link>
       </p>
-      <div className="page-intro">
-        <span className="eyebrow">Choose your accommodation</span>
+      <div className="page-intro guest-editorial-intro guest-booking-intro">
+        <span className="eyebrow">Your stay · {lodge.name}</span>
         <h1>{category.name}</h1>
       </div>
       <ErrorBanner error={error} />
-      <p>
-        <span className="booking-price">{formatNaira(category.defaultPriceMinor)}</span>{" "}
-        <span className="price-unit">{category.pricingModel === "PER_PERSON" ? "per person for this stay" : "per apartment for this stay"}</span>
-      </p>
-      {category.checkInDate && category.checkOutDate && <p className="stay-date-panel"><span aria-hidden="true">▣</span><span><strong>Expected stay</strong><small>Check in {formatDateOnly(category.checkInDate)} · Check out {formatDateOnly(category.checkOutDate)}</small></span></p>}
-      {category.description && <p>{category.description}</p>}
+      <section className="booking-offer-summary" aria-label="Stay details">
+        <div className="booking-offer-price">
+          <span className="eyebrow">Starting from</span>
+          <p><span className="booking-price">{formatNaira(category.defaultPriceMinor)}</span>{" "}
+          <span className="price-unit">{category.pricingModel === "PER_PERSON" ? "per person" : "per apartment"}</span></p>
+        </div>
+        {category.checkInDate && category.checkOutDate && <p className="stay-date-panel"><span aria-hidden="true">▣</span><span><strong>Your retreat stay</strong><small>{formatDateOnly(category.checkInDate)} – {formatDateOnly(category.checkOutDate)}</small></span></p>}
+        {category.description && <p className="booking-offer-description">{category.description}</p>}
+      </section>
 
       <BookingForm
         categoryId={category.id}
