@@ -11,7 +11,7 @@ export default function PrivacyPage() {
       <header className="legal-hero">
         <span className="eyebrow">YMR Accommodation · Guest information</span>
         <h3>Privacy Notice</h3>
-        <p>Here’s what information is used to arrange your accommodation and how it is handled.</p>
+        <p>Your information is protected under the NDPR policy and our privacy practices.</p>
       </header>
       <div className="legal-layout">
         <nav className="legal-contents card" aria-label="On this page">
@@ -25,7 +25,7 @@ export default function PrivacyPage() {
         <div className="legal-sections">
           <section id="information" className="legal-section card">
             <span className="legal-number">01</span><div><h2>Information collected</h2>
-            <p>When you book, we collect the booker’s and occupants’ names, phone numbers, email addresses, and gender where required for room allocation. If you contact support, we also collect the contact details and message you provide, including your preferred way for the lodge coordinator to reach you.</p></div>
+            <p>When you book, we collect your name, phone number, email address, and gender where required for room allocation. If you contact support, we also collect the contact details and message you provide, including your preferred channel of communication.</p></div>
           </section>
           <section id="use" className="legal-section card">
             <span className="legal-number">02</span><div><h2>How information is used</h2>
@@ -33,7 +33,7 @@ export default function PrivacyPage() {
           </section>
           <section id="access" className="legal-section card">
             <span className="legal-number">03</span><div><h2>Access and payments</h2>
-            <p>Booking details are available to authorised accommodation staff for these operational purposes. Payments are processed through Paystack; YMR Accommodation does not store your card details.</p></div>
+            <p>Booking details are available to authorised accommodation staff strictly for operational purposes. Payments are processed through Paystack; YMR does not store your card details.</p></div>
           </section>
           <section id="retention" className="legal-section card">
             <span className="legal-number">04</span><div><h2>Storage and retention</h2>
@@ -41,12 +41,12 @@ export default function PrivacyPage() {
           </section>
           <section id="questions" className="legal-section card">
             <span className="legal-number">05</span><div><h2>Questions about your information</h2>
-            <p>If you have a question about information connected to your booking, contact the accommodation team through guest support and include your booking reference where available.</p>
+            <p>If you have a question about information connected to your booking, contact the accommodation team through the live guest support.</p>
             <Link className="legal-action" href="/support">Contact guest support <span aria-hidden="true">→</span></Link></div>
           </section>
         </div>
       </div>
-      <aside className="legal-note"><strong>Your information supports your stay.</strong><span>Share only the details needed to arrange your booking or resolve your request.</span><Link href="/support">Ask a question</Link></aside>
+      <aside className="legal-note"><strong>Your information is protected.</strong><span>Share only the details needed to arrange your booking or resolve your request.</span><Link href="/support">Ask a question</Link></aside>
     </article>
   );
 }

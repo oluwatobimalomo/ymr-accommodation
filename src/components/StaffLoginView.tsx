@@ -16,20 +16,19 @@ export async function StaffLoginView({ searchParams, loginPath }: { searchParams
       <LinkLogo />
       <div className="login-story-copy"><span className="login-story-kicker">Young Ministers Retreat · 2026</span><h1>Welcome to a smoother stay.</h1><p>One workspace for lodge inventory, guest bookings, and on-site accommodation support.</p></div>
       <div className="login-story-card"><span className="login-story-icon" aria-hidden="true">⌂</span><div><strong>Every stay starts here.</strong><span>Manage the places and people that make retreat possible.</span></div><div className="login-story-dots" aria-hidden="true"><i /><i /><i /></div></div>
-      <div className="login-story-foot"><span>YMR Accommodation</span><span>Staff workspace</span></div>
+      <div className="login-story-foot"><span>YMR Accommodation</span><span>Staff Workspace</span></div>
     </aside>
     <section className="login-form-panel"><div className="login-form-inner">
       <div className="login-mobile-brand"><Image src="/ymr-mark.png" alt="" width={42} height={52} /><span>YMR Accommodation</span></div>
-      <span className="eyebrow">Staff workspace</span><h2>Sign in to continue</h2>
-      <p className="login-form-subtitle">Use your staff account to manage retreat accommodation.</p>
+      <span className="eyebrow">Staff Workspace</span><h2>Sign in to continue</h2>
       {message && <div className="alert" role="alert">{message}</div>}
       <form method="post" action="/api/auth/login" className="login-form">
         <input type="hidden" name="loginPath" value={loginPath} />
-        <div className="field"><label htmlFor="email">Email address</label><input id="email" name="email" type="email" autoComplete="username" placeholder="you@example.com" required /></div>
+        <div className="field"><label htmlFor="email">Email Address</label><input id="email" name="email" type="email" autoComplete="username" placeholder="you@example.com" required /></div>
         <div className="field"><label htmlFor="password">Password</label><input id="password" name="password" type="password" autoComplete="current-password" placeholder="Enter your password" required /></div>
         <button className="btn" type="submit">Sign in securely <span aria-hidden="true">→</span></button>
       </form>
-      <p className="login-security-note"><span aria-hidden="true">▣</span> Authorized YMR staff only. Your sign-in is protected.</p>
+      <p className="login-security-note"><span aria-hidden="true">▣</span> Authorized YMR Accommodation staff only</p>
       <a className="login-back-link" href="/">← Return to accommodation site</a>
       <a className="login-back-link" href="/staff">Need a staff account? Request access</a>
     </div></section>

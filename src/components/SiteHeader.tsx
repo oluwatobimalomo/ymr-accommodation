@@ -96,14 +96,14 @@ export function SiteFooter() {
               <Image src="/ymr-mark.png" alt="" width={34} height={44} />
               <span><strong>YMR Global</strong></span>
             </a>
-            <p>Official accommodation booking and guest support for the Young Ministers Retreat.</p>
+            <p>Official YMR accommodation booking platform.</p>
             <p className="footer-trademark">© {new Date().getFullYear()} YMR Global. All rights reserved.</p>
           </div>
           <nav className="footer-links" aria-label="Guest services">
             <strong>Guest services</strong>
-            <a href="/accommodation">Find accommodation</a>
-            <a href="/check-booking">Check my booking</a>
-            <a href="/support">Contact support</a>
+            <a href="/accommodation">Find Accommodation</a>
+            <a href="/check-booking">Check Booking</a>
+            <a href="/support">Contact Support</a>
           </nav>
           <nav className="footer-links footer-resources" aria-label="Information">
             <strong>Information</strong>

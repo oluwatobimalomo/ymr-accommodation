@@ -15,7 +15,7 @@ export const metadata: Metadata = {
     default: "YMR 2026 Accommodation",
     template: "%s | YMR Accommodation",
   },
-  description: "Official accommodation booking for the Young Ministers Retreat.",
+  description: "Official YMR accommodation booking platform.",
   metadataBase: new URL(appOrigin),
   icons: {
     icon: [{ url: "/favicon-32.png", sizes: "32x32", type: "image/png" }],

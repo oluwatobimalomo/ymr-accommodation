@@ -27,7 +27,7 @@ export default async function AccommodationPage({ searchParams }: { searchParams
       <div className="page-intro guest-editorial-intro">
         <span className="eyebrow">Young Ministers Retreat · 2026</span>
         <h1>Find your place to stay.</h1>
-        <p>Explore trusted accommodation near the retreat and choose the stay that suits you.</p>
+        <p>Explore lodges near the Old Auditorium and choose the apartment that suits you.</p>
         <span className="guest-result-count">{lodges.length} {lodges.length === 1 ? "place" : "places"} to explore</span>
       </div>
       <SavedBagNotice />
