@@ -34,6 +34,7 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
       "inventory.write",
       "inventory.block",
       "pricing.write",
+      "coupon.manage",
       "capacity.write",
       "booking.read",
       "booking.cancel",

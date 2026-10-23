@@ -4908,6 +4908,45 @@ h2 { font-size: clamp(1.12rem, 1.65vw, 1.45rem); }
   box-shadow: 0 28px 90px rgb(12 30 23 / 24%);
 }
 
+.coupon-create-card,
+.coupon-directory { display: grid; gap: 22px; }
+.coupon-create-card > div:first-child h2,
+.coupon-directory h2 { margin: 5px 0 4px; }
+.coupon-create-card > div:first-child p { margin: 0; }
+.coupon-create-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.coupon-create-form .field { min-width: 0; }
+.coupon-create-form .field input,
+.coupon-create-form .field select { width: 100%; min-width: 0; }
+.coupon-create-submit { justify-self: start; }
+.coupon-apartment-scope { min-width: 0; grid-column: 1 / -1; display: grid; gap: 12px; border: 1px solid #e1e8e3; border-radius: 14px; padding: 16px; }
+.coupon-apartment-scope > label { display: flex; align-items: center; gap: 9px; font-weight: 600; }
+.coupon-apartment-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 240px; overflow: auto; padding: 4px; }
+.coupon-apartment-options > label { display: flex; align-items: flex-start; gap: 9px; min-width: 0; border: 1px solid #e6ece8; border-radius: 10px; padding: 10px; }
+.coupon-apartment-options > label span { min-width: 0; overflow-wrap: anywhere; }
+.coupon-apartment-options small { display: block; color: #718078; }
+.coupon-apartment-scope input { accent-color: #17834d; }
+.coupon-code { color: #a9530d; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .04em; }
+.coupon-table td form { margin: 0; }
+.coupon-table .status-pill.is-success { border-color: #cbe6d1; background: #eff8f1; color: #28623a; }
+.coupon-saved { margin: 0; }
+.coupon-checkout-control { display: flex; align-items: end; gap: 10px; }
+.coupon-checkout-control .field { flex: 1; min-width: 0; }
+.coupon-apply-button { flex: 0 0 auto; min-height: 46px; }
+.coupon-feedback { margin: -4px 0 0; font-size: .82rem; line-height: 1.4; }
+.coupon-feedback.is-error { color: #a53e35; }
+.coupon-feedback.is-success,
+.coupon-saving strong { color: #28623a; }
+.coupon-subtotal { color: #718078; }
+.ticket-discount-breakdown { display: grid; gap: 6px; max-width: 420px; margin: 12px 0 18px auto; color: #66736c; font-size: .82rem; }
+.ticket-discount-breakdown > span { display: flex; justify-content: space-between; gap: 14px; }
+.ticket-discount-breakdown strong { color: #253a32; font-variant-numeric: tabular-nums; text-align: right; }
+.ticket-discount-breakdown > span:last-child { padding-top: 7px; border-top: 1px solid #e3e9e5; font-weight: 700; }
+
+@media (max-width: 640px) {
+  .coupon-create-form { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .coupon-apartment-options { grid-template-columns: minmax(0, 1fr); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .home-step,
   .faq-grid > .card,

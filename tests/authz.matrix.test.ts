@@ -14,6 +14,7 @@ const MATRIX: Record<Permission, Record<RoleKey, "Y" | "-">> = {
   "inventory.write":      { [S]: "Y", [A]: "Y", [O]: "-", [V]: "-", [G]: "-" },
   "inventory.block":      { [S]: "Y", [A]: "Y", [O]: "-", [V]: "-", [G]: "-" },
   "pricing.write":        { [S]: "Y", [A]: "Y", [O]: "-", [V]: "-", [G]: "-" },
+  "coupon.manage":        { [S]: "Y", [A]: "Y", [O]: "-", [V]: "-", [G]: "-" },
   "capacity.write":       { [S]: "Y", [A]: "Y", [O]: "-", [V]: "-", [G]: "-" },
   "booking.read":         { [S]: "Y", [A]: "Y", [O]: "Y", [V]: "Y", [G]: "Y" },
   "booking.cancel":       { [S]: "Y", [A]: "Y", [O]: "-", [V]: "-", [G]: "-" },

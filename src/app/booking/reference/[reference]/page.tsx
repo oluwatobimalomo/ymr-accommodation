@@ -106,6 +106,7 @@ export default async function BookingConfirmationPage({
       <section className={`booking-ticket-card${booking.paymentStatus === "PAID" ? " is-paid" : ""}`} aria-label="Booking ticket">
         <div className="ticket-card-topline"><span>BOOKING TICKET</span><Badge tone={booking.paymentStatus === "PAID" ? "brand" : "default"}>{PAYMENT_LABEL[booking.paymentStatus]}</Badge></div>
         <div className="ticket-reference-row"><div><span className="ticket-label">Ticket ID</span><strong className="ticket-reference">{booking.reference}</strong></div><div className="ticket-total"><span className="ticket-label">Total amount</span><strong>{formatNaira(booking.amountMinor)}</strong></div></div>
+        {booking.couponCode && booking.discountMinor > 0 && <div className="ticket-discount-breakdown"><span>Subtotal <strong>{formatNaira(booking.amountMinor + booking.discountMinor)}</strong></span><span>Discount · {booking.couponCode} <strong>−{formatNaira(booking.discountMinor)}</strong></span><span>Total paid <strong>{formatNaira(booking.amountMinor)}</strong></span></div>}
         <BookingStatusTracker paymentStatus={booking.paymentStatus} accommodationStatus={booking.accommodationStatus} />
         {items.length <= 1 && <div className="ticket-stay-grid">
           <div><span className="ticket-label">Lodge</span><strong>{lodgeName || "Accommodation"}</strong></div>

@@ -9,6 +9,7 @@ export const PERMISSIONS = {
   "inventory.write": "Create and edit lodges, units, rooms and bedspaces",
   "inventory.block": "Block bedspaces or put units into maintenance",
   "pricing.write": "Change category prices",
+  "coupon.manage": "Create and manage attendee discount codes",
   "capacity.write": "Change room or unit capacity",
 
   // Bookings and allocation

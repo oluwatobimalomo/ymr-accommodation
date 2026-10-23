@@ -15,6 +15,7 @@ import {
 import { autoHoldBedspaces, autoHoldUnit, holdBedspace, holdEntireRoom, holdUnit, InventoryUnavailableError } from "./holds";
 import { nextBookingReference } from "./reference";
 import { recordAudit } from "@/lib/audit";
+import { quoteCoupon, recordBookingCouponRedemption, recordOrderCouponRedemption } from "@/lib/coupons/coupons";
 
 export interface OccupantInput {
   name: string;
@@ -35,6 +36,7 @@ export interface CreateBookingInput {
   entireRoomId?: string;
   /** PRIVATE + customerSelectsRoom: the specific unit the customer chose. */
   unitId?: string;
+  couponCode?: string;
 }
 
 export interface CreateBookingResult {
@@ -49,7 +51,8 @@ export interface CreateBookingOrderInput {
   bookerPhone: string;
   bookerEmail: string;
   giftRecipient?: { name: string; phone: string; email: string };
-  items: Array<Omit<CreateBookingInput, "bookerName" | "bookerPhone" | "bookerEmail">>;
+  items: Array<Omit<CreateBookingInput, "bookerName" | "bookerPhone" | "bookerEmail" | "couponCode">>;
+  couponCode?: string;
 }
 
 export interface CreateBookingOrderResult {
@@ -121,9 +124,16 @@ export async function createBookingOrder(input: CreateBookingOrderInput): Promis
       if (count < category.minOrderQuantity) throw new Error(`${category.name} requires a minimum order of ${category.minOrderQuantity}.`);
       if (category.maxOrderQuantity !== null && count > category.maxOrderQuantity) throw new Error(`${category.name} allows at most ${category.maxOrderQuantity} per order.`);
     }
-    const amountMinor = details.reduce((total, { category, item }) => total + (
+    const subtotalMinor = details.reduce((total, { category, item }) => total + (
       category.pricingModel === "PER_PERSON" ? category.defaultPriceMinor * item.occupants.length : category.defaultPriceMinor
     ), 0);
+    const coupon = input.couponCode?.trim() ? await quoteCoupon(tx, {
+      code: input.couponCode, eventId: first.event.id, email: input.bookerEmail, phone: input.bookerPhone,
+      items: details.map(({ category, item }) => ({ categoryId: category.id, subtotalMinor: category.pricingModel === "PER_PERSON" ? category.defaultPriceMinor * item.occupants.length : category.defaultPriceMinor })),
+    }) : null;
+    const discountMinor = coupon?.discountMinor ?? 0;
+    const amountMinor = subtotalMinor - discountMinor;
+    if (amountMinor <= 0) throw new Error("The discount cannot cover the entire booking total. Choose a smaller fixed discount.");
     const reference = await nextBookingReference(tx, first.event.id, first.lodge.name);
     const [order] = await tx.insert(bookingOrders).values({
       eventId: first.event.id,
@@ -135,18 +145,37 @@ export async function createBookingOrder(input: CreateBookingOrderInput): Promis
       giftRecipientPhone: input.giftRecipient?.phone ?? null,
       giftRecipientEmail: input.giftRecipient?.email ?? null,
       amountMinor,
+      subtotalMinor,
+      discountMinor,
+      couponCode: coupon?.code ?? null,
       currency: first.event.currency,
     }).returning();
     if (!order) throw new Error("Could not create checkout.");
 
+    if (coupon) {
+      await recordOrderCouponRedemption(tx, {
+        couponId: coupon.coupon.id, bookingOrderId: order.id, email: input.bookerEmail, phone: input.bookerPhone,
+        discountMinor, expiresAt: new Date(Date.now() + first.event.holdMinutes * 60_000),
+      });
+    }
+
     const created: CreateBookingResult[] = [];
-    for (const [index, { item }] of details.entries()) {
+    let allocatedDiscount = 0;
+    const eligibleSubtotal = coupon?.eligibleSubtotalMinor ?? 0;
+    const lastEligibleIndex = coupon ? details.reduce((last, detail, index) => coupon.eligibleCategoryIds.includes(detail.category.id) ? index : last, -1) : -1;
+    for (const [index, { category, item }] of details.entries()) {
+      const itemSubtotal = category.pricingModel === "PER_PERSON" ? category.defaultPriceMinor * item.occupants.length : category.defaultPriceMinor;
+      const eligible = coupon && coupon.eligibleCategoryIds.includes(category.id);
+      const itemDiscount = eligible
+        ? index === lastEligibleIndex ? discountMinor - allocatedDiscount : Math.floor(discountMinor * itemSubtotal / eligibleSubtotal)
+        : 0;
+      allocatedDiscount += itemDiscount;
       created.push(await createBookingInTransaction(tx, {
         ...item,
         bookerName: input.bookerName,
         bookerPhone: input.bookerPhone,
         bookerEmail: input.bookerEmail,
-      }, order.id, index === 0 ? reference : undefined));
+      }, order.id, index === 0 ? reference : undefined, { amountMinor: itemSubtotal - itemDiscount, discountMinor: itemDiscount, couponCode: coupon?.code ?? null }));
     }
     return { reference, amountMinor, currency: first.event.currency, bookings: created };
   });
@@ -157,6 +186,7 @@ async function createBookingInTransaction(
   input: CreateBookingInput,
   checkoutOrderId?: string,
   referenceOverride?: string,
+  pricingOverride?: { amountMinor: number; discountMinor: number; couponCode: string | null },
 ): Promise<CreateBookingResult> {
     assertNonEmptyName(input.bookerName, "Booker name");
     assertNonEmptyName(input.bookerPhone, "Phone number");
@@ -182,8 +212,15 @@ async function createBookingInTransaction(
     if (event.status !== "OPEN") throw new Error("Booking is not currently open for this event.");
 
     const occupantCount = input.occupants.length;
-    const amountMinor =
+    const subtotalMinor =
       category.pricingModel === "PER_PERSON" ? category.defaultPriceMinor * occupantCount : category.defaultPriceMinor;
+    const coupon = !checkoutOrderId && input.couponCode?.trim()
+      ? await quoteCoupon(tx, { code: input.couponCode, eventId: event.id, items: [{ categoryId: category.id, subtotalMinor }], email: input.bookerEmail, phone: input.bookerPhone })
+      : null;
+    const discountMinor = pricingOverride?.discountMinor ?? coupon?.discountMinor ?? 0;
+    const amountMinor = pricingOverride?.amountMinor ?? subtotalMinor - discountMinor;
+    if (amountMinor <= 0) throw new Error("The discount cannot cover the entire booking total. Choose a smaller fixed discount.");
+    const couponCode = pricingOverride?.couponCode ?? coupon?.code ?? null;
 
     const assignments = await resolveAssignments(tx, category, input, occupantCount, event.holdMinutes);
     if (category.mode === "SHARED") {
@@ -213,10 +250,19 @@ async function createBookingInTransaction(
         bookerEmail: input.bookerEmail,
         occupantCount,
         amountMinor,
+        discountMinor,
+        couponCode,
         currency: event.currency,
       })
       .returning();
     if (!booking) throw new Error("Could not create the booking.");
+
+    if (coupon) {
+      await recordBookingCouponRedemption(tx, {
+        couponId: coupon.coupon.id, bookingId: booking.id, email: input.bookerEmail, phone: input.bookerPhone,
+        discountMinor, expiresAt: new Date(Date.now() + event.holdMinutes * 60_000),
+      });
+    }
 
     try {
       await tx.insert(bookingOccupants).values(

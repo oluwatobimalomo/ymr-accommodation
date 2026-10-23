@@ -50,6 +50,8 @@ export const bookings = pgTable("bookings", {
   bookerEmail: text("booker_email").notNull(),
   occupantCount: integer("occupant_count").notNull(),
   amountMinor: integer("amount_minor").notNull(),
+  discountMinor: integer("discount_minor").notNull().default(0),
+  couponCode: text("coupon_code"),
   currency: char("currency", { length: 3 }).notNull(),
   paymentStatus: paymentStatus("payment_status").notNull().default("PENDING"),
   accommodationStatus: accommodationStatus("accommodation_status").notNull().default("UNALLOCATED"),

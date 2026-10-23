@@ -24,15 +24,14 @@ export default async function StaffRegistrationPage({ searchParams }: { searchPa
       </div> : <>
         <span className="eyebrow">Staff registration</span>
         <h1>Request staff access</h1>
-        <p className="staff-registration-intro">Create your account and request an operational role. An administrator must approve your access before you can sign in.</p>
+        <p className="staff-registration-intro">An administrator must approve your access before you can sign in.</p>
         {error && <div className="alert" role="alert">{error}</div>}
         <form method="post" action="/api/staff/request-access" className="staff-registration-form">
-          <label className="field"><span>Full name</span><input name="name" autoComplete="name" required minLength={2} maxLength={120} /></label>
-          <label className="field"><span>Work email</span><input name="email" type="email" autoComplete="email" required maxLength={254} /></label>
-          <label className="field"><span>Create password (at least 12 characters)</span><input name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={200} /></label>
-          <label className="field"><span>Role requested</span><select name="roleKey" defaultValue="accommodation_officer"><option value="accommodation_officer">Lodge Coordinator</option><option value="accommodation_overseer">Accommodation Overseer</option></select></label>
-          <div className="staff-role-note"><strong>Lodge Coordinator</strong><span>An administrator will assign one or more lodges after approval.</span><strong>Accommodation Overseer</strong><span>After approval, this role automatically covers all lodges.</span></div>
-          <button className="btn" type="submit">Submit access request</button>
+          <label className="field"><span>Full Name</span><input name="name" autoComplete="name" required minLength={2} maxLength={120} /></label>
+          <label className="field"><span>Email Address</span><input name="email" type="email" autoComplete="email" required maxLength={254} /></label>
+          <label className="field"><span>Create Password (at least 12 characters)</span><input name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={200} /></label>
+          <label className="field"><span>Role Requested</span><select name="roleKey" defaultValue="accommodation_officer"><option value="accommodation_officer">Lodge Coordinator</option><option value="accommodation_overseer">Accommodation Overseer</option></select></label>
+          <button className="btn" type="submit">Submit Request</button>
         </form>
         <p className="staff-registration-login">Already approved? <Link href="/staff/login">Sign in</Link></p>
       </>}

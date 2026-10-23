@@ -49,6 +49,7 @@ export async function POST(request: Request) {
       bookerEmail: String(body.bookerEmail ?? "").trim(),
       giftRecipient,
       items,
+      couponCode: String(body.couponCode ?? "").trim() || undefined,
     });
     const callbackUrl = new URL(`/booking/reference/${encodeURIComponent(order.reference)}`, request.url).toString();
     const transaction = await initializeTransaction({

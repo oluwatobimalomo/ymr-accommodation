@@ -5,6 +5,7 @@ export * from "./audit";
 export * from "./inventory";
 export * from "./booking";
 export * from "./booking-orders";
+export * from "./coupons";
 export * from "./keys";
 export * from "./support";
 export * from "./payments";

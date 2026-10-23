@@ -48,6 +48,7 @@ export async function POST(request: Request) {
       occupants,
       entireRoomId: (form.get("entireRoomId") as string) || undefined,
       unitId: (form.get("unitId") as string) || undefined,
+      couponCode: String(form.get("couponCode") ?? "").trim() || undefined,
     });
 
     const callbackUrl = new URL(`/booking/reference/${result.reference}`, request.url).toString();

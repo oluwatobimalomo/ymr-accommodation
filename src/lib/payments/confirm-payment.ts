@@ -6,6 +6,7 @@ import { formatNaira } from "@/lib/format-currency";
 import { formatDateOnly } from "@/lib/format-date";
 import { bookingEmailMessage } from "@/lib/email/booking-message";
 import { processPendingEmails } from "@/lib/email/outbox";
+import { redeemBookingCoupon, redeemOrderCoupon } from "@/lib/coupons/coupons";
 import type { VerifyTransactionResult } from "./paystack";
 
 /**
@@ -152,6 +153,7 @@ export async function confirmPaymentFromVerifiedResult(verified: VerifyTransacti
         paidAt: verified.paidAt ? new Date(verified.paidAt) : new Date(),
         rawPayload: verified.raw,
       });
+      await redeemBookingCoupon(tx, booking.id);
       await tx.update(bookings).set({ paymentStatus: "PAID", allocationStatus: "NOT_ALLOCATED", updatedAt: new Date() }).where(eq(bookings.id, booking.id));
       await createTicketInTx(tx, {
         bookingId: booking.id,
@@ -168,7 +170,7 @@ export async function confirmPaymentFromVerifiedResult(verified: VerifyTransacti
         entityType: "booking",
         entityId: booking.id,
         before: { paymentStatus: booking.paymentStatus, accommodationStatus: booking.accommodationStatus },
-        after: { paymentStatus: "PAID", accommodationStatus: booking.accommodationStatus, allocationStatus: "NOT_ALLOCATED", outcome: "needs_manual_review" },
+        after: { paymentStatus: "PAID", accommodationStatus: booking.accommodationStatus, allocationStatus: "NOT_ALLOCATED", outcome: "needs_manual_review", couponCode: booking.couponCode, discountMinor: booking.discountMinor },
       });
       return { status: "needs_manual_review" };
     }
@@ -184,6 +186,7 @@ export async function confirmPaymentFromVerifiedResult(verified: VerifyTransacti
       paidAt: verified.paidAt ? new Date(verified.paidAt) : new Date(),
       rawPayload: verified.raw,
     });
+    await redeemBookingCoupon(tx, booking.id);
     await tx
       .update(bookings)
       .set({ paymentStatus: "PAID", accommodationStatus: "ALLOCATED", allocationStatus: "FULLY_ALLOCATED", updatedAt: new Date() })
@@ -198,6 +201,9 @@ export async function confirmPaymentFromVerifiedResult(verified: VerifyTransacti
       recipientEmail: booking.bookerEmail,
       bookerName: booking.bookerName,
       amountMinor: booking.amountMinor,
+      couponCode: booking.couponCode ?? undefined,
+      subtotalMinor: booking.amountMinor + booking.discountMinor,
+      discountMinor: booking.discountMinor,
       bookingIds: [booking.id],
     });
 
@@ -207,7 +213,7 @@ export async function confirmPaymentFromVerifiedResult(verified: VerifyTransacti
       entityType: "booking",
       entityId: booking.id,
       before: { paymentStatus: booking.paymentStatus, accommodationStatus: booking.accommodationStatus },
-      after: { paymentStatus: "PAID", accommodationStatus: "ALLOCATED", allocationStatus: "FULLY_ALLOCATED", reference: verified.reference },
+      after: { paymentStatus: "PAID", accommodationStatus: "ALLOCATED", allocationStatus: "FULLY_ALLOCATED", reference: verified.reference, couponCode: booking.couponCode, discountMinor: booking.discountMinor },
     });
     return { status: "confirmed" };
   });
@@ -257,6 +263,7 @@ async function confirmOrderPayment(
     currency: verified.currency, status: "SUCCESS", gatewayResponse: verified.gatewayResponse,
     paidAt: verified.paidAt ? new Date(verified.paidAt) : new Date(), rawPayload: verified.raw,
   });
+  await redeemOrderCoupon(tx, order.id);
 
   if (expired) {
     await tx.update(bookingOrders).set({ paymentStatus: "PAID", updatedAt: new Date() }).where(eq(bookingOrders.id, order.id));
@@ -282,17 +289,20 @@ async function confirmOrderPayment(
     recipientEmail: order.bookerEmail,
     bookerName: order.bookerName,
     amountMinor: order.amountMinor,
+    couponCode: order.couponCode ?? undefined,
+    subtotalMinor: order.subtotalMinor,
+    discountMinor: order.discountMinor,
     bookingIds: orderBookings.map((booking) => booking.id),
     gift: order.giftRecipientName ? { name: order.giftRecipientName, email: order.giftRecipientEmail ?? "" } : undefined,
   });
   await recordAudit(tx, { actor: null, action: "payment.confirmed", entityType: "booking_order", entityId: order.id,
-    before: { paymentStatus: order.paymentStatus }, after: { paymentStatus: "PAID", reference: verified.reference, bookingCount: orderBookings.length } });
+    before: { paymentStatus: order.paymentStatus }, after: { paymentStatus: "PAID", reference: verified.reference, bookingCount: orderBookings.length, couponCode: order.couponCode, discountMinor: order.discountMinor } });
   return { status: "confirmed" };
 }
 
 async function enqueueBookingEmails(
   tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0],
-  input: { dedupeBase: string; reference: string; recipientName: string; recipientEmail: string; bookerName: string; amountMinor: number; bookingIds: string[]; gift?: { name: string; email: string } },
+  input: { dedupeBase: string; reference: string; recipientName: string; recipientEmail: string; bookerName: string; amountMinor: number; bookingIds: string[]; couponCode?: string; subtotalMinor?: number; discountMinor?: number; gift?: { name: string; email: string } },
 ) {
   const bookingRows = await tx.select({ id: bookings.id, reference: bookings.reference, categoryName: accommodationCategories.name, lodgeId: lodges.id, lodgeName: lodges.name, lodgeAddress: lodges.address, lodgeImages: lodges.images, whatsappGroupUrl: lodges.whatsappGroupUrl, checkInDate: accommodationCategories.checkInDate, checkOutDate: accommodationCategories.checkOutDate, coordinatorName: lodges.contactName, coordinatorPhone: lodges.contactPhone })
     .from(bookings).innerJoin(accommodationCategories, eq(accommodationCategories.id, bookings.categoryId)).innerJoin(lodges, eq(lodges.id, accommodationCategories.lodgeId)).where(inArray(bookings.id, input.bookingIds));
@@ -317,7 +327,10 @@ async function enqueueBookingEmails(
     ...(input.gift?.email ? [{ dedupeKey: `${input.dedupeBase}:gift`, recipientName: input.gift.name, recipientEmail: input.gift.email, gift: true }] : []),
   ];
   for (const message of messages) {
-    const content = await bookingEmailMessage({ recipientName: message.recipientName, bookerName: input.bookerName, reference: input.reference, amount: formatNaira(input.amountMinor), items, gift: message.gift });
+    const discount = input.couponCode && (input.discountMinor ?? 0) > 0
+      ? { code: input.couponCode, subtotal: formatNaira(input.subtotalMinor ?? input.amountMinor + input.discountMinor!), amount: formatNaira(input.discountMinor!) }
+      : undefined;
+    const content = await bookingEmailMessage({ recipientName: message.recipientName, bookerName: input.bookerName, reference: input.reference, amount: formatNaira(input.amountMinor), discount, items, gift: message.gift });
     await tx.insert(emailOutbox).values({ dedupeKey: message.dedupeKey, recipientEmail: message.recipientEmail, subject: content.subject, textBody: content.text, htmlBody: content.html, attachments: content.attachments }).onConflictDoNothing({ target: emailOutbox.dedupeKey });
   }
 }

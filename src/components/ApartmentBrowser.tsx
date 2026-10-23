@@ -44,6 +44,10 @@ export function ApartmentBrowser({ apartments, lodgeName }: { apartments: Apartm
   const [bookerName, setBookerName] = useState("");
   const [bookerPhone, setBookerPhone] = useState("");
   const [bookerEmail, setBookerEmail] = useState("");
+  const [couponCode, setCouponCode] = useState("");
+  const [couponQuote, setCouponQuote] = useState<{ code: string; subtotalMinor: number; discountMinor: number; amountMinor: number; requestKey: string } | null>(null);
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
+  const [couponError, setCouponError] = useState("");
   const [giftBooking, setGiftBooking] = useState(false);
   const [recipientName, setRecipientName] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
@@ -55,6 +59,8 @@ export function ApartmentBrowser({ apartments, lodgeName }: { apartments: Apartm
   const getGuests = (item: CartItem) => guestsByCategory[item.categoryId] ?? Array.from({ length: item.quantity || item.bedspaceIds?.length || 1 }, () => ({ name: bookerName, gender: "" as const }));
   const itemAmount = (item: CartItem) => item.priceMinor * item.quantity;
   const total = useMemo(() => bag.reduce((sum, item) => sum + itemAmount(item), 0), [bag, guestsByCategory]);
+  const couponRequestKey = JSON.stringify([couponCode.trim().toUpperCase(), bookerEmail.trim().toLowerCase(), bookerPhone.replace(/\D/g, ""), bag.map(({ categoryId, quantity }) => [categoryId, quantity]).sort(([a], [b]) => String(a).localeCompare(String(b)))]);
+  const activeCoupon = couponQuote?.requestKey === couponRequestKey ? couponQuote : null;
   const needsBedspaceSelection = selected?.mode === "SHARED" && selected.customerSelectsBedspace;
 
   useEffect(() => {
@@ -114,13 +120,14 @@ export function ApartmentBrowser({ apartments, lodgeName }: { apartments: Apartm
 
   async function submitCheckout(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (couponCode.trim() && !activeCoupon) { setCouponError("Apply the discount code before continuing to payment."); return; }
     setBusy(true); setError("");
     try {
       const items = bag.flatMap((item) => Array.from({ length: item.quantity }, (_, index) => ({
         categoryId: item.categoryId,
         occupants: [{ name: giftBooking ? recipientName : bookerName, phone: giftBooking ? recipientPhone : bookerPhone, email: giftBooking ? recipientEmail : bookerEmail, gender: item.mode === "PRIVATE" ? "UNSPECIFIED" as const : getGuests(item)[index]?.gender as "MALE" | "FEMALE", bedspaceId: item.bedspaceIds?.[index] }],
       })));
-      const response = await fetch("/api/booking/create-cart", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bookerName, bookerPhone, bookerEmail, items, ...(giftBooking ? { giftRecipientName: recipientName, giftRecipientPhone: recipientPhone, giftRecipientEmail: recipientEmail } : {}) }) });
+      const response = await fetch("/api/booking/create-cart", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bookerName, bookerPhone, bookerEmail, couponCode: activeCoupon?.code ?? "", items, ...(giftBooking ? { giftRecipientName: recipientName, giftRecipientPhone: recipientPhone, giftRecipientEmail: recipientEmail } : {}) }) });
       const result = await response.json() as { error?: string; redirectUrl?: string };
       if (!response.ok) throw new Error(result.error ?? "We could not start checkout.");
       window.location.assign(result.redirectUrl!);
@@ -128,6 +135,26 @@ export function ApartmentBrowser({ apartments, lodgeName }: { apartments: Apartm
       setError(reason instanceof Error ? reason.message : "We could not start checkout.");
       setBusy(false);
     }
+  }
+
+  async function applyCoupon() {
+    setCouponError("");
+    if (!couponCode.trim()) { setCouponError("Enter a discount code first."); return; }
+    if (!bookerEmail.trim() || !bookerPhone.trim()) { setCouponError("Enter your email and phone number before applying the code."); return; }
+    if (bag.length === 0) { setCouponError("Add an apartment to your bag first."); return; }
+    setApplyingCoupon(true);
+    try {
+      const response = await fetch("/api/booking/apply-coupon", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: couponCode, email: bookerEmail, phone: bookerPhone, items: bag.map(({ categoryId, quantity }) => ({ categoryId, quantity })) }),
+      });
+      const result = await response.json() as { code?: string; subtotalMinor?: number; discountMinor?: number; amountMinor?: number; error?: string };
+      if (!response.ok || !result.code || result.subtotalMinor === undefined || result.discountMinor === undefined || result.amountMinor === undefined) throw new Error(result.error ?? "We could not apply that discount code.");
+      setCouponQuote({ code: result.code, subtotalMinor: result.subtotalMinor, discountMinor: result.discountMinor, amountMinor: result.amountMinor, requestKey: couponRequestKey });
+    } catch (reason) {
+      setCouponQuote(null);
+      setCouponError(reason instanceof Error ? reason.message : "We could not apply that discount code.");
+    } finally { setApplyingCoupon(false); }
   }
 
   return <>
@@ -183,12 +210,16 @@ export function ApartmentBrowser({ apartments, lodgeName }: { apartments: Apartm
           <label className="field"><span>Your Name</span><input required value={bookerName} onChange={(event) => setBookerName(event.target.value)} autoComplete="name" /></label>
           <label className="field"><span>WhatsApp Number</span><input required type="tel" value={bookerPhone} onChange={(event) => setBookerPhone(event.target.value)} autoComplete="tel" /></label>
           <label className="field"><span>Email</span><input required type="email" value={bookerEmail} onChange={(event) => setBookerEmail(event.target.value)} autoComplete="email" /></label>
+          <div className="coupon-checkout-control"><label className="field"><span>Discount code <small className="field-hint">Optional</small></span><input value={couponCode} onChange={(event) => { setCouponCode(event.target.value.toUpperCase()); setCouponQuote(null); setCouponError(""); }} autoComplete="off" maxLength={32} placeholder="Enter a code" /></label><button type="button" className="btn secondary coupon-apply-button" onClick={applyCoupon} disabled={applyingCoupon}>{applyingCoupon ? "Checking…" : "Apply"}</button></div>
+          {couponError && <p className="coupon-feedback is-error" role="alert">{couponError}</p>}
+          {activeCoupon && <p className="coupon-feedback is-success" role="status">{activeCoupon.code} applied · you save {formatNaira(activeCoupon.discountMinor)}.</p>}
           <label className="gift-booking-toggle"><input type="checkbox" checked={giftBooking} onChange={(event) => setGiftBooking(event.target.checked)} /><span><strong>Gift this to someone</strong><small>Recipient will receive the gift in their mailbox.</small></span></label>
           {giftBooking && <fieldset className="bag-guest-group"><legend>Recipient details</legend><label className="field"><span>Recipient name</span><input required value={recipientName} onChange={(event) => setRecipientName(event.target.value)} autoComplete="name" /></label><label className="field"><span>Recipient phone number</span><input required type="tel" value={recipientPhone} onChange={(event) => setRecipientPhone(event.target.value)} autoComplete="tel" /></label><label className="field"><span>Recipient email</span><input required type="email" value={recipientEmail} onChange={(event) => setRecipientEmail(event.target.value)} autoComplete="email" /></label></fieldset>}
           {bag.filter((item) => item.mode === "SHARED").map((item) => <fieldset className="bag-guest-group" key={item.categoryId}><legend>{item.name} · Shared space gender</legend>{!giftBooking && <p>Choose your gender so we can check it against the selected room.</p>}{Array.from({ length: item.quantity }, (_, unitIndex) => <label className="field" key={unitIndex}><span>{item.bedspaceIds?.[unitIndex] ? `BDS ${item.bedspaceLabels?.[unitIndex]?.letter ?? apartments.find((apartment) => apartment.id === item.categoryId)?.bedspaceOptions.find((bedspace) => bedspace.id === item.bedspaceIds?.[unitIndex])?.letter ?? "—"}` : `Space ${unitIndex + 1}`} · {giftBooking ? "Recipient gender" : "Your gender"}</span><select required value={getGuests(item)[unitIndex]?.gender ?? ""} onChange={(event) => { const guests = [...getGuests(item)]; guests[unitIndex] = { ...(guests[unitIndex] ?? { name: giftBooking ? recipientName : bookerName, gender: "" }), gender: event.target.value as Guest["gender"] }; updateGuests(item.categoryId, guests); }}><option value="">Choose gender</option><option value="FEMALE">Female</option><option value="MALE">Male</option></select></label>)}</fieldset>)}
           {error && <div className="alert" role="alert">{error}</div>}
           <div className="bag-checkout-footer">
-            <div className="bag-total"><span>Total</span><strong>{formatNaira(total)}</strong></div>
+            {activeCoupon && <><div className="bag-total coupon-subtotal"><span>Subtotal</span><strong>{formatNaira(activeCoupon.subtotalMinor)}</strong></div><div className="bag-total coupon-saving"><span>Discount · {activeCoupon.code}</span><strong>−{formatNaira(activeCoupon.discountMinor)}</strong></div></>}
+            <div className="bag-total"><span>{activeCoupon ? "Total" : "Subtotal"}</span><strong>{formatNaira(activeCoupon?.amountMinor ?? total)}</strong></div>
             <div className="bag-checkout-actions">
               <button className="btn" type="submit" disabled={busy}>{busy ? "Preparing checkout…" : "Continue to payment"}</button>
               <button type="button" className="btn secondary" onClick={() => setCheckout(false)}>Back to bag</button>

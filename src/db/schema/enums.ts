@@ -18,6 +18,9 @@ export const roomStatus = pgEnum("room_status", ["ACTIVE", "INACTIVE", "MAINTENA
 export const bedspaceStatus = pgEnum("bedspace_status", ["AVAILABLE", "BLOCKED", "MAINTENANCE", "RETIRED"]);
 
 export const paymentStatus = pgEnum("payment_status", ["PENDING", "PAID", "FAILED", "REFUNDED", "CANCELLED"]);
+export const couponStatus = pgEnum("coupon_status", ["ACTIVE", "PAUSED"]);
+export const couponRedemptionStatus = pgEnum("coupon_redemption_status", ["RESERVED", "REDEEMED"]);
+export const couponDiscountType = pgEnum("coupon_discount_type", ["PERCENTAGE", "FIXED"]);
 export const accommodationStatus = pgEnum("accommodation_status", [
   "UNALLOCATED",
   "ALLOCATED",

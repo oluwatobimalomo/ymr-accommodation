@@ -9,6 +9,7 @@ const links = [
   { href: "/admin", label: "Dashboard", icon: "dashboard" },
   { href: "/admin/lodges", label: "Lodges", icon: "lodges" },
   { href: "/admin/events", label: "Events", icon: "events" },
+  { href: "/admin/coupons", label: "Discount codes", icon: "payments" },
   { href: "/admin/bookings", label: "Bookings", icon: "bookings" },
   { href: "/admin/operations", label: "Guest operations", icon: "operations" },
   { href: "/admin/reports", label: "Reports", icon: "reports" },
@@ -46,6 +47,7 @@ export function AdminNavigation({ actor }: { actor: Actor }) {
     ? actor.globalPermissions.has("reports.read") || actor.scopedPermissions.has("reports.read")
     : link.href === "/admin/staff" ? actor.globalPermissions.has("users.manage")
     : link.href === "/admin/events" ? actor.globalPermissions.has("events.manage")
+    : link.href === "/admin/coupons" ? actor.globalPermissions.has("coupon.manage")
     : link.href === "/admin/audit" ? actor.globalPermissions.has("audit.read")
     : link.href === "/admin/occupancy-reports" || link.href === "/admin/check-in-reports" ? actor.globalPermissions.has("booking.read") || (actor.scopedPermissions.has("booking.read") && actor.lodgeIds.size > 0)
     : link.href === "/admin/reconciliation" || link.href === "/admin/payment-reports" ? actor.globalPermissions.has("payment.reconcile")

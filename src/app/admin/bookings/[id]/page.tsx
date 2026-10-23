@@ -53,7 +53,7 @@ export default async function AdminBookingDetailPage({
       <section className="card booking-summary-card">
         <div className="booking-summary-primary"><span className="eyebrow">Booked by</span><strong>{booking.bookerName}</strong><p>{booking.bookerPhone} <span>·</span> {booking.bookerEmail}</p></div>
         <div className="booking-summary-stay"><span className="eyebrow">Accommodation</span><strong>{category?.name || "Accommodation"}</strong><span>{summaryCount === 1 ? "1 stay" : `${summaryCount} stays in this order`}</span></div>
-        {canSeeFinancials && <div className="booking-summary-total"><span className="eyebrow">{checkoutOrder ? "Order total" : "Booking total"}</span><strong>{formatNaira(summaryAmount)}</strong>{checkoutOrder && <span>One payment · {checkoutOrder.paymentStatus.toLowerCase()}</span>}</div>}
+        {canSeeFinancials && <div className="booking-summary-total"><span className="eyebrow">{checkoutOrder ? "Order total" : "Booking total"}</span><strong>{formatNaira(summaryAmount)}</strong>{checkoutOrder && <span>One payment · {checkoutOrder.paymentStatus.toLowerCase()}</span>}{(checkoutOrder?.couponCode || booking.couponCode) && <span>Discount code {checkoutOrder?.couponCode ?? booking.couponCode} · saved {formatNaira(checkoutOrder?.discountMinor ?? booking.discountMinor)}</span>}</div>}
       </section>
 
       {checkoutOrder && <details className="card booking-order-disclosure">

@@ -259,6 +259,8 @@ export async function getBookingByReference(reference: string) {
         bookerPhone: order.bookerPhone,
         bookerEmail: order.bookerEmail,
         amountMinor: order.amountMinor,
+        discountMinor: order.discountMinor,
+        couponCode: order.couponCode,
         currency: order.currency,
         paymentStatus: allPaid ? "PAID" as const : anyCancelled ? "CANCELLED" as const : order.paymentStatus,
         occupantCount: occupants.length,

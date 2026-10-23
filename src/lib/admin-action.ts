@@ -51,7 +51,9 @@ export async function handleAdminAction(
     await action(form, actor);
     const successUrl = new URL(redirectSuccessTo, request.url);
     const intent = String(form.get("intent") ?? "");
-    const notice = redirectTo === "/admin/staff" && intent === "create"
+    const notice = redirectTo === "/admin/coupons"
+      ? intent === "create" ? "code-created" : "status-updated"
+      : redirectTo === "/admin/staff" && intent === "create"
       ? "staff-access-saved"
       : successNoticeByIntent[intent] ?? "changes-saved";
     successUrl.searchParams.set("saved", notice);

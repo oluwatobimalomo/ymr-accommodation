@@ -52,6 +52,10 @@ export function BookingForm({
   const [bookerName, setBookerName] = useState("");
   const [bookerPhone, setBookerPhone] = useState("");
   const [bookerEmail, setBookerEmail] = useState("");
+  const [couponCode, setCouponCode] = useState("");
+  const [couponQuote, setCouponQuote] = useState<{ code: string; discountMinor: number; amountMinor: number; requestKey: string } | null>(null);
+  const [couponFeedback, setCouponFeedback] = useState("");
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
   const [bookerGender, setBookerGender] = useState<"MALE" | "FEMALE" | "">("");
   // Only relevant when there's more than one room: which room the customer
   // is currently looking at. A single-room apartment skips this entirely
@@ -92,6 +96,27 @@ export function BookingForm({
   const needsRoomPicker = usesBedspacePicker && rooms.length > 1;
 
   const occupantSlots: OccupantDraft[] = usesBedspacePicker ? selected : Array.from({ length: autoCount }, () => ({}));
+  const couponRequestKey = `${couponCode.trim().toUpperCase()}|${bookerEmail.trim().toLowerCase()}|${bookerPhone.replace(/\D/g, "")}|${occupantSlots.length}`;
+  const activeCoupon = couponQuote?.requestKey === couponRequestKey ? couponQuote : null;
+
+  async function applyCoupon() {
+    setCouponFeedback("");
+    if (!couponCode.trim() || !bookerEmail.trim() || !bookerPhone.trim() || occupantSlots.length === 0) {
+      setCouponFeedback("Enter your contact details, choose your bedspaces and enter a code first.");
+      return;
+    }
+    setApplyingCoupon(true);
+    try {
+      const response = await fetch("/api/booking/apply-coupon", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: couponCode, email: bookerEmail, phone: bookerPhone, items: [{ categoryId, quantity: pricingModel === "PER_PERSON" ? occupantSlots.length : 1 }] }) });
+      const result = await response.json() as { code?: string; discountMinor?: number; amountMinor?: number; error?: string };
+      if (!response.ok || !result.code || result.discountMinor === undefined || result.amountMinor === undefined) throw new Error(result.error ?? "We could not apply that discount code.");
+      setCouponQuote({ code: result.code, discountMinor: result.discountMinor, amountMinor: result.amountMinor, requestKey: couponRequestKey });
+      setCouponFeedback(`${result.code} applied. You save ${formatNaira(result.discountMinor)}.`);
+    } catch (error) {
+      setCouponQuote(null);
+      setCouponFeedback(error instanceof Error ? error.message : "We could not apply that discount code.");
+    } finally { setApplyingCoupon(false); }
+  }
 
   function toggleBedspace(roomName: string, bedspace: BedspaceData) {
     if (entireRoomId) return; // entire-room mode replaces individual picking
@@ -226,6 +251,11 @@ export function BookingForm({
             <label htmlFor="bookerEmail">Email</label>
             <input id="bookerEmail" name="bookerEmail" type="email" required autoComplete="email" value={bookerEmail} onChange={(event) => setBookerEmail(event.target.value)} />
           </div>
+          <div className="coupon-checkout-control"><div className="field">
+            <label htmlFor="couponCode">Discount code <small className="field-hint">Optional</small></label>
+            <input id="couponCode" name="couponCode" value={couponCode} onChange={(event) => { setCouponCode(event.target.value.toUpperCase()); setCouponQuote(null); setCouponFeedback(""); }} autoComplete="off" maxLength={32} placeholder="Enter a code" />
+          </div><button type="button" className="btn secondary coupon-apply-button" onClick={applyCoupon} disabled={applyingCoupon}>{applyingCoupon ? "Checking…" : "Apply"}</button></div>
+          {couponFeedback && <p className={`coupon-feedback${activeCoupon ? " is-success" : " is-error"}`} role={activeCoupon ? "status" : "alert"}>{couponFeedback}</p>}
           <label className="gift-booking-toggle"><input type="checkbox" checked={isGiftBooking} onChange={(event) => setIsGiftBooking(event.target.checked)} /> <span><strong>Gift this to someone</strong><small>Enter their details so their reservation ticket can be sent to them.</small></span></label>
           {mode === "SHARED" && !isGiftBooking && occupantSlots.length === 1 && <div className="field"><label htmlFor="bookerGender">Your gender</label><select id="bookerGender" required value={bookerGender} onChange={(event) => setBookerGender(event.target.value as "MALE" | "FEMALE" | "")}><option value="" disabled>Select</option><option value="MALE">Male</option><option value="FEMALE">Female</option></select></div>}
         </div>
@@ -250,8 +280,8 @@ export function BookingForm({
       {occupantSlots.length === 1 && !isGiftBooking && <><input type="hidden" name="occupant_name_0" value={bookerName} /><input type="hidden" name="occupant_gender_0" value={mode === "SHARED" ? bookerGender : "UNSPECIFIED"} /><input type="hidden" name="occupant_phone_0" value={bookerPhone} /><input type="hidden" name="occupant_email_0" value={bookerEmail} /></>}
 
       <div className="booking-total" aria-live="polite">
-        <span><strong>{occupantSlots.length ? (pricingModel === "PER_PERSON" ? "Estimated total" : "Accommodation total") : "Your total"}</strong><small>{occupantSlots.length ? (pricingModel === "PER_PERSON" ? `${occupantSlots.length} guest${occupantSlots.length === 1 ? "" : "s"} × ${formatNaira(priceMinor)} per person` : "For this accommodation") : "Select bedspaces to calculate your total."}</small></span>
-        <strong>{occupantSlots.length ? formatNaira(totalMinor) : "—"}</strong>
+        <span><strong>{activeCoupon ? "Total after discount" : occupantSlots.length ? (pricingModel === "PER_PERSON" ? "Estimated total" : "Accommodation total") : "Your total"}</strong><small>{occupantSlots.length ? (pricingModel === "PER_PERSON" ? `${occupantSlots.length} guest${occupantSlots.length === 1 ? "" : "s"} × ${formatNaira(priceMinor)} per person` : "For this accommodation") : "Select bedspaces to calculate your total."}{activeCoupon && <><br />{formatNaira(totalMinor)} subtotal · {activeCoupon.code} saves {formatNaira(activeCoupon.discountMinor)}</>}</small></span>
+        <strong>{occupantSlots.length ? formatNaira(activeCoupon?.amountMinor ?? totalMinor) : "—"}</strong>
       </div>
 
       <button className="btn" type="submit" disabled={!canSubmit}>
