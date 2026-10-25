@@ -3,10 +3,10 @@
  *  YMR THEME - THE ONLY FILE THAT NEEDS EDITING TO REBRAND
  * ============================================================================
  *  Colors are sampled from the official YMR/RCCG flame-and-dove logo
- *  (public/ymr-mark.png). Typography uses the local system UI font stack
- *  throughout for a consistent, native feel without downloading web fonts.
+ *  (public/ymr-mark.png). Geist is loaded in the root layout and used
+ *  throughout the interface.
  *
- *  The font stacks intentionally use locally available system fonts.
+ *  Keep font family assignments here aligned with the root layout variables.
  * ============================================================================
  */
 export const theme = {
@@ -35,8 +35,9 @@ export const theme = {
     infoSoft: "#DBEAFE",
   },
   font: {
-    display: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-    body: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+    display: 'var(--font-geist-sans), system-ui, sans-serif',
+    body: 'var(--font-geist-sans), system-ui, sans-serif',
+    mono: 'var(--font-geist-mono), ui-monospace, monospace',
   },
   type: { pageTitle: "clamp(1.5rem, 1.25rem + 1vw, 2rem)", section: "clamp(1.2rem, 1.08rem + .55vw, 1.5rem)", card: "1rem", body: "1rem", meta: ".875rem", label: ".875rem", navigation: ".9375rem", button: ".875rem", eyebrow: ".7rem" },
   radius: { sm: "6px", md: "12px", lg: "20px", pill: "999px" },

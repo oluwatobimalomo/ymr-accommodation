@@ -44,7 +44,7 @@ export default async function AccommodationPage({ searchParams }: { searchParams
       ) : lodges.length === 0 ? (
         <p>No lodges match “{q}”. Try another name or location.</p>
       ) : (
-        <div className="grid accommodation-listing-grid">
+        <div className="grid accommodation-listing-grid lodge-grid">
           {lodges.map((lodge) => (
             <Link key={lodge.id} href={`/accommodation/${lodge.slug}`} className="listing-card guest-lodge-card">
               <LodgeImagePreview images={lodge.images} fallback={lodge.mainImage} alt={lodge.name} />

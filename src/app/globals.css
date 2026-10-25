@@ -47,6 +47,16 @@ html {
   scroll-behavior: smooth;
 }
 
+:root {
+  --type-caption: .8125rem;
+  --type-small: .875rem;
+  --type-body: 1rem;
+  --type-lead: 1.125rem;
+  --type-title: clamp(2.25rem, 4.5vw, 4rem);
+  --type-heading: clamp(1.5rem, 2.6vw, 2.25rem);
+  --type-subheading: 1.25rem;
+}
+
 body {
   display: flex;
   min-height: 100vh;
@@ -55,8 +65,8 @@ body {
   background: var(--color-canvas);
   color: var(--color-ink);
   font-family: var(--font-body);
-  font-size: 1rem;
-  line-height: 1.6;
+  font-size: var(--type-body);
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -70,23 +80,22 @@ h3 {
   margin: 0 0 var(--space-3);
   color: var(--color-ink);
   font-family: var(--font-body);
-  font-weight: 600;
-  line-height: 1.16;
+  font-weight: 650;
+  line-height: 1.08;
+  letter-spacing: -0.035em;
   text-wrap: balance;
 }
 
 h1 {
-  font-size: clamp(1.9rem, 3.3vw, 2.75rem);
-  letter-spacing: -0.035em;
+  font-size: var(--type-title);
 }
 
 h2 {
-  font-size: clamp(1.35rem, 2.35vw, 1.8rem);
-  letter-spacing: -0.025em;
+  font-size: var(--type-heading);
 }
 
 h3 {
-  font-size: clamp(1.08rem, 1.4vw, 1.2rem);
+  font-size: var(--type-subheading);
 }
 
 p {
@@ -3002,8 +3011,8 @@ main .booking-ticket-page h1 {
 }
 
 .accommodation-listing-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  gap: clamp(12px, 1.6vw, 18px);
 }
 
 .accommodation-listing-grid .listing-card {
@@ -3018,8 +3027,8 @@ main .booking-ticket-page h1 {
   box-shadow: 0 12px 28px rgba(24, 24, 27, 0.09);
 }
 
-.accommodation-listing-grid .listing-body { padding: 18px 20px 20px; }
-.accommodation-listing-grid .listing-card h3 { font-size: 1.14rem; letter-spacing: -0.035em; }
+.accommodation-listing-grid .listing-body { padding: 12px; }
+.accommodation-listing-grid .listing-card h3 { font-size: 1.02rem; letter-spacing: -0.035em; }
 
 .room-picker-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; }
 .room-picker-heading h2 { margin-bottom: 6px; }
@@ -4579,9 +4588,12 @@ h2 { font-size: clamp(1.12rem, 1.65vw, 1.45rem); }
 .guest-lodge-card:hover,
 .guest-lodge-card:focus-visible { transform: translateY(-4px); border-color: #d8c4ad; box-shadow: 0 18px 36px rgb(28 45 35 / 12%); }
 .guest-lodge-card .lodge-image-preview { aspect-ratio: 1.55; background: #e9eee9; }
+.lodge-grid .guest-lodge-card .lodge-image-preview { aspect-ratio: 1.6; }
 .guest-lodge-card .lodge-image-preview::after { position: absolute; inset: 45% 0 0; background: linear-gradient(transparent, rgb(13 27 23 / 19%)); content: ""; pointer-events: none; }
 .guest-lodge-card .listing-body { display: grid; gap: 5px; padding: 18px 19px 20px; }
 .guest-lodge-card h3 { margin: 0; color: #24372f; font-size: 1.18rem; letter-spacing: -.035em; }
+.lodge-grid .guest-lodge-card .listing-body { padding: 12px; }
+.lodge-grid .guest-lodge-card h3 { font-size: 1.02rem; }
 .guest-lodge-card .listing-meta { display: -webkit-box; overflow: hidden; color: #69756e; font-size: .88rem; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .guest-lodge-card .listing-price { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin: 11px 0 0; color: var(--guest-forest); font-size: 1.08rem; }
 .guest-lodge-card .listing-price .price-unit { color: #78817c; font-size: .76rem; }
