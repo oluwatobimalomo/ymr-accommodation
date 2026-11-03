@@ -217,7 +217,10 @@ export async function confirmPaymentFromVerifiedResult(verified: VerifyTransacti
     });
     return { status: "confirmed" };
   });
-  if (outcome.status === "confirmed" || outcome.status === "already_confirmed") {
+  // Email delivery is queued in the same transaction as the first successful
+  // confirmation. Process that new work once here; retries belong to the
+  // outbox worker, not repeated payment callbacks or webhook deliveries.
+  if (outcome.status === "confirmed") {
     try { await processPendingEmails(2); } catch (error) { console.error("Could not process the booking email outbox:", error); }
   }
   return outcome;

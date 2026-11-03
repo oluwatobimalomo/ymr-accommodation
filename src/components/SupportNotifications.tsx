@@ -41,6 +41,8 @@ export function SupportNotifications() {
   const bellRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const lastIds = useRef<{ support: string | null; staff: string | null } | null>(null);
+  const lastFetchedAt = useRef(0);
+  const refreshRef = useRef<(() => Promise<boolean>) | null>(null);
   const audio = useRef<AudioContext | null>(null);
   const audioUnlocked = useRef(false);
   const soundPending = useRef(false);
@@ -109,21 +111,42 @@ export function SupportNotifications() {
       }
       lastIds.current = incomingIds;
     };
-    const poll = async () => {
-      try {
-        const response = await fetch("/api/admin/support/notifications", { cache: "no-store" });
-        if (!response.ok) throw new Error("Notification request failed");
-        const snapshot = (await response.json()) as Snapshot;
-        acceptSnapshot(snapshot);
-      } catch {
-        if (!disposed) setHasError(true);
-      }
+    let inFlight: Promise<boolean> | null = null;
+    const poll = () => {
+      if (disposed || document.visibilityState !== "visible") return Promise.resolve(false);
+      if (Date.now() - lastFetchedAt.current < 4_000) return Promise.resolve(true);
+      if (inFlight) return inFlight;
+      inFlight = (async () => {
+        try {
+          const response = await fetch("/api/admin/support/notifications", { cache: "no-store" });
+          if (!response.ok) throw new Error("Notification request failed");
+          const snapshot = (await response.json()) as Snapshot;
+          lastFetchedAt.current = Date.now();
+          acceptSnapshot(snapshot);
+          return true;
+        } catch {
+          if (!disposed) setHasError(true);
+          return false;
+        } finally {
+          inFlight = null;
+        }
+      })();
+      return inFlight;
     };
+    refreshRef.current = poll;
     void poll();
-    const timer = window.setInterval(() => void poll(), 20000);
+    const timer = window.setInterval(() => void poll(), 30_000);
+    const refreshOnReturn = () => {
+      if (document.visibilityState === "visible") void poll();
+    };
+    document.addEventListener("visibilitychange", refreshOnReturn);
+    window.addEventListener("focus", refreshOnReturn);
     return () => {
       disposed = true;
+      refreshRef.current = null;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshOnReturn);
+      window.removeEventListener("focus", refreshOnReturn);
       window.removeEventListener("pointerdown", unlockAudio);
       window.removeEventListener("keydown", unlockAudio);
       void audio.current?.close();
@@ -136,16 +159,11 @@ export function SupportNotifications() {
   async function toggleNotifications() {
     const next = !isOpen;
     setIsOpen(next);
-    if (next) {
+    if (next && (hasError || Date.now() - lastFetchedAt.current > 15_000)) {
       setIsLoading(true);
-      setHasError(false);
       try {
-        const response = await fetch("/api/admin/support/notifications", { cache: "no-store" });
-        if (!response.ok) throw new Error("Notification request failed");
-        const snapshot = (await response.json()) as Snapshot;
-        setLatest(snapshot.latest);
-        setOpenCount(snapshot.openCount);
-        setStaffAccess(snapshot.staffAccess ?? null);
+        const succeeded = await refreshRef.current?.();
+        if (!succeeded) setHasError(true);
       } catch {
         // Keep the panel available and show its retry guidance if the API is down.
         setHasError(true);

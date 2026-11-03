@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Bedspace } from "./Bedspace";
 import { formatNaira } from "@/lib/format-currency";
 
@@ -44,7 +43,7 @@ export function BookingForm({
   rooms,
   action,
 }: Props) {
-  const router = useRouter();
+  const [liveRooms, setLiveRooms] = useState(rooms);
   const [selected, setSelected] = useState<OccupantDraft[]>([]);
   const [entireRoomId, setEntireRoomId] = useState<string | null>(null);
   const [autoCount, setAutoCount] = useState(1);
@@ -66,34 +65,80 @@ export function BookingForm({
   const [roomSearch, setRoomSearch] = useState("");
   const [roomPage, setRoomPage] = useState(1);
 
-  // Refresh derived availability while this tab is visible. A slightly
-  // slower cadence avoids repeated full server renders in dormant tabs.
+  // Refresh only inventory status while the booking page is active. The
+  // server rechecks availability during checkout, so this is display freshness.
   useEffect(() => {
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible") router.refresh();
-    }, 20_000);
-    return () => clearInterval(timer);
-  }, [router]);
+    if (mode !== "SHARED" || !customerSelectsBedspace) return;
+    let stopped = false;
+    let inFlight = false;
+    let lastRequestAt = 0;
+    const refreshAvailability = async (force = false) => {
+      if (stopped || document.visibilityState !== "visible" || inFlight) return;
+      if (!force && Date.now() - lastRequestAt < 5_000) return;
+      inFlight = true;
+      lastRequestAt = Date.now();
+      try {
+        const response = await fetch(`/api/booking/${encodeURIComponent(categoryId)}/availability`, { cache: "no-store" });
+        if (!response.ok) return;
+        const result = await response.json() as { bedspaces?: Array<{ id: string; status: BedspaceData["status"] }> };
+        if (stopped || !Array.isArray(result.bedspaces)) return;
+        const statusById = new Map(result.bedspaces.map((bedspace) => [bedspace.id, bedspace.status]));
+        setLiveRooms((current) => {
+          let changed = false;
+          const next = current.map((room) => {
+            let roomChanged = false;
+            const bedspaces = room.bedspaces.map((bedspace) => {
+              const status = statusById.get(bedspace.id);
+              if (!status || status === bedspace.status) return bedspace;
+              changed = true;
+              roomChanged = true;
+              return { ...bedspace, status };
+            });
+            return roomChanged ? { ...room, bedspaces } : room;
+          });
+          return changed ? next : current;
+        });
+      } catch {
+        // Availability is revalidated on submit; a transient refresh failure
+        // should not interrupt the booking form.
+      } finally {
+        inFlight = false;
+      }
+    };
+    void refreshAvailability(true);
+    const timer = window.setInterval(() => void refreshAvailability(), 30_000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshAvailability();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", refreshWhenVisible);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshWhenVisible);
+    };
+  }, [categoryId, customerSelectsBedspace, mode]);
 
   // If a different customer takes a bedspace that this visitor selected,
   // remove it from their draft instead of leaving a stale selected tile.
   useEffect(() => {
     const availableIds = new Set(
-      rooms.flatMap((room) => room.bedspaces.filter((bedspace) => bedspace.status === "AVAILABLE").map((bedspace) => bedspace.id)),
+      liveRooms.flatMap((room) => room.bedspaces.filter((bedspace) => bedspace.status === "AVAILABLE").map((bedspace) => bedspace.id)),
     );
     setSelected((prev) => prev.filter((slot) => !slot.bedspaceId || availableIds.has(slot.bedspaceId)));
     setEntireRoomId((prev) => {
       if (!prev) return null;
-      const room = rooms.find((candidate) => candidate.id === prev);
+      const room = liveRooms.find((candidate) => candidate.id === prev);
       return room && room.bedspaces.length > 0 && room.bedspaces.every((bedspace) => bedspace.status === "AVAILABLE") ? prev : null;
     });
-  }, [rooms]);
+  }, [liveRooms]);
 
   const usesBedspacePicker = mode === "SHARED" && customerSelectsBedspace;
   const usesAutoCount = mode === "SHARED" && !customerSelectsBedspace;
   // A private listing is already the accommodation the guest selected. The
   // underlying unit is allocated automatically, so there is no second picker.
-  const needsRoomPicker = usesBedspacePicker && rooms.length > 1;
+  const needsRoomPicker = usesBedspacePicker && liveRooms.length > 1;
 
   const occupantSlots: OccupantDraft[] = usesBedspacePicker ? selected : Array.from({ length: autoCount }, () => ({}));
   const couponRequestKey = `${couponCode.trim().toUpperCase()}|${bookerEmail.trim().toLowerCase()}|${bookerPhone.replace(/\D/g, "")}|${occupantSlots.length}`;
@@ -138,8 +183,8 @@ export function BookingForm({
   }
 
   const canSubmit = usesBedspacePicker ? occupantSlots.length > 0 : autoCount > 0;
-  const viewingRoom = rooms.find((r) => r.id === viewingRoomId);
-  const matchingRooms = rooms.filter((room) => room.name.toLocaleLowerCase().includes(roomSearch.trim().toLocaleLowerCase()));
+  const viewingRoom = liveRooms.find((r) => r.id === viewingRoomId);
+  const matchingRooms = liveRooms.filter((room) => room.name.toLocaleLowerCase().includes(roomSearch.trim().toLocaleLowerCase()));
   const roomPageCount = Math.max(1, Math.ceil(matchingRooms.length / 12));
   const visibleRooms = matchingRooms.slice((roomPage - 1) * 12, roomPage * 12);
   const totalMinor = pricingModel === "PER_PERSON" ? priceMinor * occupantSlots.length : priceMinor;
@@ -152,7 +197,7 @@ export function BookingForm({
 
       {usesBedspacePicker && needsRoomPicker && !viewingRoom && (
         <div className="stack">
-          <div className="room-picker-heading"><div><h2>Choose a room</h2><p>{rooms.length} rooms. Search by room name, then choose one to see its bedspaces.</p></div><span>{matchingRooms.length} shown</span></div>
+          <div className="room-picker-heading"><div><h2>Choose a room</h2><p>{liveRooms.length} rooms. Search by room name, then choose one to see its bedspaces.</p></div><span>{matchingRooms.length} shown</span></div>
           <label className="room-search"><span className="sr-only">Search rooms</span><input type="search" value={roomSearch} onChange={(event) => { setRoomSearch(event.target.value); setRoomPage(1); }} placeholder="Search rooms…" /></label>
           {matchingRooms.length === 0 ? <p className="empty-state">No rooms match “{roomSearch}”. Try another name.</p> : <div className="grid accommodation-listing-grid room-picker-grid">
             {visibleRooms.map((room) => {

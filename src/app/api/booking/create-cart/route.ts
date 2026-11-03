@@ -51,7 +51,7 @@ export async function POST(request: Request) {
       items,
       couponCode: String(body.couponCode ?? "").trim() || undefined,
     });
-    const callbackUrl = new URL(`/booking/reference/${encodeURIComponent(order.reference)}`, request.url).toString();
+    const callbackUrl = new URL(`/api/booking/payment-return/${encodeURIComponent(order.reference)}`, request.url).toString();
     const transaction = await initializeTransaction({
       email: String(body.bookerEmail ?? "").trim(),
       amountMinor: order.amountMinor,

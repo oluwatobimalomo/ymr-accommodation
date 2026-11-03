@@ -1,12 +1,12 @@
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 import { ErrorBanner } from "@/components/AdminChrome";
 import { Badge } from "@/components/Badge";
 import { BookingStatusTracker } from "@/components/BookingStatusTracker";
 import { TicketDownloadActions } from "@/components/TicketDownloadActions";
 import { ClearBagOnSuccess } from "@/components/ClearBagOnSuccess";
 import { getBookingByReference } from "@/lib/booking/queries";
-import { confirmPaymentFromVerifiedResult } from "@/lib/payments/confirm-payment";
-import { verifyTransaction } from "@/lib/payments/paystack";
+import { isValidPaymentReturnProof, paymentReturnCookieName } from "@/lib/payments/payment-return-proof";
 import { formatNaira } from "@/lib/format-currency";
 import { formatDateOnly } from "@/lib/format-date";
 
@@ -25,43 +25,17 @@ export default async function BookingConfirmationPage({
   searchParams,
 }: {
   params: Promise<{ reference: string }>;
-  searchParams: Promise<{ reference?: string; trxref?: string; phone?: string; error?: string }>;
+  searchParams: Promise<{ phone?: string; error?: string }>;
 }) {
   const { reference } = await params;
   const query = await searchParams;
-  const hasPaystackCallback = !!(query.reference || query.trxref);
-  let verifiedPaystackReturn = false;
-
-  let data = await getBookingByReference(reference);
+  const data = await getBookingByReference(reference);
   if (!data) notFound();
-
-  // Paystack redirects the browser back here with ?reference=...&trxref=...
-  // after checkout. We never trust that redirect alone - we re-verify
-  // directly against Paystack's API before treating it as paid. The webhook
-  // remains the authoritative backstop if the customer closes the tab here.
-  if (hasPaystackCallback) {
-    try {
-      const verified = await verifyTransaction(reference);
-      const outcome = await confirmPaymentFromVerifiedResult(verified);
-      if (outcome.status !== "confirmed" && outcome.status !== "already_confirmed") {
-        console.error(
-          `Payment callback for ${reference} did not confirm (${outcome.status}). ` +
-            `Expected amount=${data.booking.amountMinor} currency=${data.booking.currency}; ` +
-            `Paystack reported requestedAmount=${verified.requestedAmountMinor} grossAmount=${verified.amountMinor} currency=${verified.currency}.`,
-        );
-      } else {
-        verifiedPaystackReturn = true;
-        data = await getBookingByReference(reference); // re-fetch to show the now-updated status
-      }
-    } catch (e) {
-      // Verification failing here just means the page shows whatever the
-      // booking's current status already is; the webhook will still land.
-      // But we must never swallow this silently - log it so it's traceable.
-      console.error(`Payment callback verification threw for ${reference}:`, e);
-    }
-  }
-
-  if (!data) notFound();
+  const cookieStore = await cookies();
+  const verifiedPaystackReturn = isValidPaymentReturnProof(
+    reference,
+    cookieStore.get(paymentReturnCookieName(reference))?.value,
+  );
   const { booking, occupants, lodgeName, categoryName, checkInDate, checkOutDate, coordinatorName, coordinatorPhone, items, bookerEmail, isGift } = data;
 
   // Only a successfully verified Paystack transaction may skip the phone
@@ -75,7 +49,7 @@ export default async function BookingConfirmationPage({
         <div className="stack">
           <h1>Verify it&rsquo;s you</h1>
           <p>Enter the phone number used for this booking to view its details.</p>
-          <ErrorBanner error={query.phone ? "That phone number doesn't match this booking." : undefined} />
+          <ErrorBanner error={query.error === "payment" ? "Payment could not be confirmed yet. Enter the phone number used for the booking to check its status." : query.phone ? "That phone number doesn't match this booking." : undefined} />
           <form method="get" className="card stack" style={{ maxWidth: 380 }}>
             <div className="field">
               <label htmlFor="phone">Phone number</label>
