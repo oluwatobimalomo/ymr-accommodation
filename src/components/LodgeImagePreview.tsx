@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
-export function LodgeImagePreview({ images, fallback, alt }: { images: string[]; fallback: string | null; alt: string }) {
-  const photos = images.length ? images : fallback ? [fallback] : [];
+export function LodgeImagePreview({ lodgeId, images, alt }: { lodgeId: string; images: string[]; alt: string }) {
+  const photos = images.map((image, index) => image || `/api/public/lodges/${encodeURIComponent(lodgeId)}/image?index=${index}`);
   const previewRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(false);
   const [index, setIndex] = useState(0);

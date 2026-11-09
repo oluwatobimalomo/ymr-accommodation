@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import "./design-system.css";
 import { SiteFooter, SiteHeader } from "@/components/SiteHeader";
 import { themeCss } from "@/theme/tokens";
 

@@ -47,7 +47,7 @@ export default async function AccommodationPage({ searchParams }: { searchParams
         <div className="grid accommodation-listing-grid lodge-grid">
           {lodges.map((lodge) => (
             <Link key={lodge.id} href={`/accommodation/${lodge.slug}`} className="listing-card guest-lodge-card">
-              <LodgeImagePreview images={lodge.images} fallback={lodge.mainImage} alt={lodge.name} />
+              <LodgeImagePreview lodgeId={lodge.id} images={lodge.imageRefs} alt={lodge.name} />
               <div className="listing-body">
                 <h3>{lodge.name}</h3>
                 <p className="listing-meta">{lodge.description || lodge.address || "See available rooms"}</p>

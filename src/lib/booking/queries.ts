@@ -38,24 +38,26 @@ async function getGuestOperationTimestamps(bookingIds: string[]) {
 
 export async function listActiveLodges() {
   const db = getDb();
-  const activeLodges = await db.select({
+  const [activeLodges, prices] = await Promise.all([db.select({
     id: lodges.id, name: lodges.name, slug: lodges.slug, description: lodges.description, address: lodges.address,
-    mainImage: sql<string | null>`${lodges.images}[1]`,
-    images: lodges.images,
-  }).from(lodges).innerJoin(events, eq(events.id, lodges.eventId)).where(and(eq(lodges.status, "ACTIVE"), eq(events.status, "OPEN"))).orderBy(lodges.name);
-  if (activeLodges.length === 0) return [];
-
-  const prices = await db
+    imageRefs: sql<string[]>`COALESCE(ARRAY(SELECT CASE WHEN photo.image_value LIKE 'data:image/%' THEN '' ELSE photo.image_value END FROM unnest(${lodges.images}) WITH ORDINALITY AS photo(image_value, image_order) ORDER BY photo.image_order), ARRAY[]::text[])`,
+  }).from(lodges).innerJoin(events, eq(events.id, lodges.eventId)).where(and(eq(lodges.status, "ACTIVE"), eq(events.status, "OPEN"))).orderBy(lodges.name), db
     .select({ lodgeId: accommodationCategories.lodgeId, minimumPriceMinor: min(accommodationCategories.defaultPriceMinor) })
     .from(accommodationCategories)
-    .where(and(inArray(accommodationCategories.lodgeId, activeLodges.map((lodge) => lodge.id)), eq(accommodationCategories.status, "ACTIVE")))
-    .groupBy(accommodationCategories.lodgeId);
+    .innerJoin(lodges, eq(lodges.id, accommodationCategories.lodgeId))
+    .innerJoin(events, eq(events.id, lodges.eventId))
+    .where(and(eq(accommodationCategories.status, "ACTIVE"), eq(lodges.status, "ACTIVE"), eq(events.status, "OPEN")))
+    .groupBy(accommodationCategories.lodgeId)]);
   const minimumByLodge = new Map(prices.map((price) => [price.lodgeId, price.minimumPriceMinor]));
   return activeLodges.map((lodge) => ({ ...lodge, minimumPriceMinor: minimumByLodge.get(lodge.id) ?? null }));
 }
 
 export async function getLodgeBySlug(slug: string) {
-  const [row] = await getDb().select({ id: lodges.id, name: lodges.name, slug: lodges.slug, status: lodges.status, description: lodges.description, address: lodges.address, images: lodges.images }).from(lodges).innerJoin(events, eq(events.id, lodges.eventId)).where(and(eq(lodges.slug, slug), eq(events.status, "OPEN"))).limit(1);
+  const [row] = await getDb().select({
+    id: lodges.id, name: lodges.name, slug: lodges.slug, status: lodges.status, description: lodges.description, address: lodges.address,
+    imageCount: sql<number>`COALESCE(cardinality(${lodges.images}), 0)::int`,
+    imageRefs: sql<string[]>`COALESCE(ARRAY(SELECT CASE WHEN photo.image_value LIKE 'data:image/%' THEN '' ELSE photo.image_value END FROM unnest(${lodges.images}) WITH ORDINALITY AS photo(image_value, image_order) ORDER BY photo.image_order), ARRAY[]::text[])`,
+  }).from(lodges).innerJoin(events, eq(events.id, lodges.eventId)).where(and(eq(lodges.slug, slug), eq(events.status, "OPEN"))).limit(1);
   return row && row.status === "ACTIVE" ? row : null;
 }
 
@@ -70,7 +72,11 @@ export async function listActiveCategoriesForLodge(lodgeId: string) {
 
   const categoryIds = categoryRows.map((c) => c.id);
   const unitRows = categoryIds.length
-    ? await db.select({ unitId: accommodationUnits.id, categoryId: accommodationUnits.categoryId, images: accommodationUnits.images, bedSpecifications: accommodationUnits.bedSpecifications, bedTypes: accommodationUnits.bedTypes, bedSizes: accommodationUnits.bedSizes }).from(accommodationUnits).where(and(inArray(accommodationUnits.categoryId, categoryIds), eq(accommodationUnits.status, "ACTIVE")))
+    ? await db.select({
+      unitId: accommodationUnits.id, categoryId: accommodationUnits.categoryId,
+      images: sql<string[]>`COALESCE(ARRAY(SELECT CASE WHEN photo.image_value LIKE 'data:image/%' THEN '' ELSE photo.image_value END FROM unnest(${accommodationUnits.images}) WITH ORDINALITY AS photo(image_value, image_order) ORDER BY photo.image_order), ARRAY[]::text[])`,
+      bedSpecifications: accommodationUnits.bedSpecifications, bedTypes: accommodationUnits.bedTypes, bedSizes: accommodationUnits.bedSizes,
+    }).from(accommodationUnits).where(and(inArray(accommodationUnits.categoryId, categoryIds), eq(accommodationUnits.status, "ACTIVE")))
     : [];
   const unitIds = unitRows.map((unit) => unit.unitId);
   const [facilityRows, overviewRows] = await Promise.all([
@@ -80,7 +86,7 @@ export async function listActiveCategoriesForLodge(lodgeId: string) {
   const unitByCategory = new Map<string, { image: string | null; images: string[]; bedSpecifications: string[]; bedTypes: string[]; bedSizes: string[]; facilities: string[]; overviewFacilities: string[] }>();
   for (const unit of unitRows) {
     const current = unitByCategory.get(unit.categoryId) ?? { image: unit.images[0] ?? null, images: [], bedSpecifications: [], bedTypes: [], bedSizes: [], facilities: [], overviewFacilities: [] };
-    current.images.push(...unit.images);
+    current.images.push(...unit.images.map((image, index) => image || `/api/public/units/${encodeURIComponent(unit.unitId)}/image?index=${index}`));
     current.bedSpecifications.push(...unit.bedSpecifications);
     current.bedTypes.push(...unit.bedTypes);
     current.bedSizes.push(...unit.bedSizes);

@@ -35,7 +35,7 @@ export default async function LodgePage({ params, searchParams }: { params: Prom
           {lodge.description && <p>{lodge.description}</p>}
           {allCategories.length > 0 && <span className="guest-result-count">{allCategories.length} {allCategories.length === 1 ? "apartment" : "apartments"} available</span>}
         </div>
-        {(lodge.images.length > 0) && <LodgeImagePreview images={lodge.images} fallback={null} alt={`${lodge.name} accommodation`} />}
+        {lodge.imageCount > 0 && <LodgeImagePreview lodgeId={lodge.id} images={lodge.imageRefs} alt={`${lodge.name} accommodation`} />}
       </div>
 
       {allCategories.length > 0 && (

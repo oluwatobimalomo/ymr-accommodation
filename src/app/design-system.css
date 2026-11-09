@@ -1,0 +1,204 @@
+/*
+ * YMR interface system
+ * Shared visual language for guest booking and staff operations.
+ * Keep page geometry and pagination in globals.css; this file centralizes
+ * semantic colors, type roles, controls, and surface treatment.
+ */
+
+:root {
+  /* Compatibility aliases for older page styles. */
+  --color-muted: var(--color-ink-muted);
+  --color-text: var(--color-ink);
+  --color-text-muted: var(--color-ink-muted);
+  --color-admin-canvas: var(--color-canvas-admin);
+  --type-caption: var(--type-meta);
+  --type-small: var(--type-meta);
+  --type-title: var(--type-page-title);
+  --type-heading: var(--type-section);
+  --type-subheading: var(--type-card);
+  --type-lead: 1.125rem;
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--type-body);
+  line-height: 1.5;
+}
+
+/* One sans-serif family and a clear, restrained hierarchy across every route. */
+:where(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--font-display);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+
+:where(h1) { font-size: var(--type-page-title); line-height: 1.08; }
+:where(h2) { font-size: var(--type-section); line-height: 1.2; }
+:where(h3) { font-size: var(--type-card); line-height: 1.3; }
+
+.guest-experience-page .guest-editorial-intro h1 {
+  font-family: var(--font-display);
+  font-size: var(--type-display);
+  font-weight: 650;
+  letter-spacing: -0.045em;
+  line-height: 1.02;
+}
+
+.guest-lodge-hero .guest-editorial-intro h1,
+.guest-lodge-page .apartment-sections > h2 {
+  font-family: var(--font-display);
+  font-size: var(--type-page-title);
+  font-weight: 650;
+  letter-spacing: -0.04em;
+  line-height: 1.08;
+}
+
+.guest-editorial-intro .eyebrow,
+.admin-main .eyebrow,
+.admin-main .admin-page-heading .eyebrow {
+  font-size: var(--type-eyebrow);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1.4;
+}
+
+.guest-editorial-intro p { font-size: var(--type-body); line-height: 1.55; }
+
+.site-header .nav a,
+.admin-nav a {
+  font-size: var(--type-navigation);
+}
+
+.admin-main {
+  background-color: var(--color-canvas-admin);
+}
+
+.admin-sidebar {
+  background: linear-gradient(180deg, var(--color-forest) 0%, #1a443a 58%, #183d36 100%);
+}
+
+.admin-nav a[aria-current="page"] {
+  box-shadow: inset 3px 0 var(--color-brand);
+}
+
+.admin-main .admin-page-heading h1,
+.admin-main .booking-detail-heading h1,
+.admin-main .support-ticket-page-heading h1 {
+  font-size: var(--type-page-title);
+  font-weight: 650;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+}
+
+.admin-main .admin-section-heading h2,
+.admin-main .data-table-heading h2,
+.admin-main .support-section-heading h2 {
+  font-size: var(--type-section);
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+
+/* Common surfaces use the same quiet border, radius, and elevation. */
+.card, .listing-card, .directory-tools, .metric-card, .support-ticket-card, .data-table-card {
+  border-color: var(--color-border-subtle);
+  box-shadow: var(--shadow-card);
+}
+
+.card, .listing-card, .support-ticket-card {
+  border-radius: var(--radius-lg);
+}
+
+.directory-tools, .metric-card, .data-table-card {
+  border-radius: var(--radius-md);
+}
+
+.guest-experience-page .listing-card,
+.guest-experience-page .directory-tools {
+  background-color: var(--color-surface);
+}
+
+/* Shared control language; existing widths, flow, and responsive layouts remain. */
+.btn, button, input, select, textarea {
+  font-family: var(--font-body);
+}
+
+.btn {
+  border-radius: var(--radius-md);
+  font-size: var(--type-button);
+  font-weight: 650;
+  transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease, color 150ms ease;
+}
+
+.btn:not(.secondary):not(.text-button) {
+  border-color: var(--color-brand-strong);
+  background-color: var(--color-brand-strong);
+  color: var(--color-on-brand);
+}
+
+.btn:not(.secondary):not(.text-button):hover:not(:disabled) {
+  border-color: var(--color-brand);
+  background-color: var(--color-brand);
+}
+
+.btn.secondary {
+  border-color: var(--color-border-subtle);
+  background-color: var(--color-surface);
+  color: var(--color-forest);
+}
+
+.field > span, .field label, .directory-sort > span, .support-date-filter > span {
+  color: var(--color-ink-muted);
+  font-size: var(--type-label);
+  font-weight: 600;
+}
+
+.field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), .field select, .field textarea {
+  border-color: var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+}
+
+.field input::placeholder, .field select::placeholder, .field textarea::placeholder {
+  color: var(--color-text-subtle);
+  opacity: 1;
+}
+
+/* Keep tables legible and compact without changing their overflow or pagination. */
+.data-table th, .admin-table th {
+  color: var(--color-ink-muted);
+  font-size: var(--type-table-header);
+  font-weight: 700;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.data-table td, .admin-table td {
+  font-size: var(--type-meta);
+  line-height: 1.45;
+}
+
+.metric-card strong, .report-metric strong, .payment-report-summary .card strong {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Consistent visible keyboard focus across guest and staff controls. */
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-focus) 72%, transparent);
+  outline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .guest-experience-page .guest-editorial-intro h1 {
+    font-size: clamp(2.1rem, 8.5vw, 3rem);
+  }
+
+  /* Prevent mobile browsers from zooming when guests focus checkout fields. */
+  .bag-checkout-form input, .bag-checkout-form select, .bag-checkout-form textarea { font-size: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn, a, button { transition-duration: 0.01ms; }
+}
